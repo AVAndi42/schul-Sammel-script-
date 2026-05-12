@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meine Uploads – Schulfilm 2025</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Mulish:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f3ee; --surface: #ffffff; --border: #e2dfd8;
+      --accent: #1a1a1a; --pop: #ff5c35; --text: #1a1a1a; --muted: #9e9a93;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Mulish', sans-serif; min-height: 100vh; }
+
+    /* LOGIN */
+    #loginScreen { position: fixed; inset: 0; background: var(--bg); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+    .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2.5rem 2rem; width: 100%; max-width: 380px; box-shadow: 0 8px 40px rgba(0,0,0,0.08); text-align: center; }
+    .login-box .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+    .login-box h1 { font-family: 'Syne', sans-serif; font-size: 1.6rem; font-weight: 800; margin-bottom: 0.3rem; }
+    .login-box p  { color: var(--muted); font-size: 0.88rem; margin-bottom: 1.5rem; }
+    input[type="password"] { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; color: var(--text); font-family: 'Mulish', sans-serif; font-size: 1rem; padding: 0.75rem 1rem; margin-bottom: 0.75rem; outline: none; text-align: center; letter-spacing: 0.15em; transition: border-color 0.2s; }
+    input[type="password"]:focus { border-color: var(--accent); }
+    .btn-primary { width: 100%; background: var(--accent); color: white; border: none; border-radius: 10px; padding: 0.85rem; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: opacity 0.2s; }
+    .btn-primary:hover { opacity: 0.85; }
+    .login-error { color: var(--pop); font-size: 0.82rem; margin-top: 0.5rem; min-height: 1.2em; }
+
+    #app { display: none; }
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 100; }
+    .nav-brand { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .nav-brand span { color: var(--pop); }
+    .nav-right { display: flex; gap: 0.75rem; align-items: center; }
+    .nav-link { font-size: 0.78rem; color: var(--muted); text-decoration: none; padding: 0.3rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; transition: all 0.2s; font-weight: 500; }
+    .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-logout { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.3rem 0.7rem; border-radius: 8px; font-size: 0.78rem; cursor: pointer; font-family: 'Mulish', sans-serif; font-weight: 500; transition: all 0.2s; }
+    .btn-logout:hover { border-color: var(--pop); color: var(--pop); }
+
+    .page { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+    .page-header { margin-bottom: 2rem; }
+    .page-header h2 { font-family: 'Syne', sans-serif; font-size: 1.8rem; font-weight: 800; }
+    .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 0.4rem; }
+
+    .name-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .name-bar label { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); white-space: nowrap; }
+    select { background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 0.5rem 1rem; flex: 1; }
+
+    .stats-row { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.5rem; min-width: 110px; }
+    .stat .num { font-family: 'Syne', sans-serif; font-size: 1.8rem; font-weight: 800; line-height: 1; }
+    .stat .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+
+    .file-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .file-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; align-items: stretch; gap: 0; animation: slideIn 0.3s ease both; }
+    @keyframes slideIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
+    .file-thumb { width: 90px; flex-shrink: 0; background: var(--bg); }
+    .file-thumb img, .file-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .file-body { flex: 1; padding: 0.85rem 1rem; display: flex; flex-direction: column; justify-content: center; gap: 0.3rem; }
+    .file-name { font-weight: 600; font-size: 0.9rem; }
+    .file-meta { font-size: 0.78rem; color: var(--muted); }
+    .file-comment { font-size: 0.82rem; color: var(--text); font-style: italic; }
+    .file-actions { display: flex; align-items: center; gap: 0.5rem; padding: 0 1rem; flex-shrink: 0; }
+    .btn-dl { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.78rem; text-decoration: none; transition: all 0.2s; white-space: nowrap; }
+    .btn-dl:hover { border-color: var(--accent); }
+    .btn-del { background: rgba(255,92,53,0.08); border: 1px solid rgba(255,92,53,0.2); color: var(--pop); border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .btn-del:hover { background: rgba(255,92,53,0.15); border-color: var(--pop); }
+
+    .admin-note { background: #fff8f0; border: 1px solid #fed7aa; color: #9a3412; border-radius: 10px; padding: 1rem; font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .empty { text-align: center; padding: 4rem 1rem; color: var(--muted); }
+    .spinner { text-align: center; padding: 3rem; color: var(--muted); }
+    .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--accent); color: white; border-radius: 10px; padding: 0.6rem 1.4rem; font-size: 0.85rem; font-weight: 600; opacity: 0; transition: all 0.3s; pointer-events: none; z-index: 400; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="icon">⚙️</div>
+    <h1>Meine Uploads</h1>
+    <p>Melde dich mit dem Klassen-Passwort an.</p>
+    <input type="password" id="loginPw" placeholder="Passwort" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn-primary" onclick="doLogin()">Einloggen</button>
+    <div class="login-error" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <nav>
+    <div class="nav-brand">🎬 <span>Schulfilm</span> 2025</div>
+    <div class="nav-right">
+      <a href="/" class="nav-link">← Zurück</a>
+      <button class="btn-logout" onclick="doLogout()">Abmelden</button>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="page-header">
+      <h2>⚙️ Meine Uploads verwalten</h2>
+      <p>Hier kannst du deine hochgeladenen Dateien ansehen.</p>
+    </div>
+
+    <div class="admin-note">
+      ℹ️ <b>Hinweis:</b> Aus Sicherheitsgründen können Dateien nur noch von Admins gelöscht werden. Bitte wende dich an Andreas oder das Film-Team, wenn du eine Datei entfernen möchtest.
+    </div>
+
+    <div class="name-bar">
+      <label>Dein Name</label>
+      <select id="nameSelect" onchange="loadMyFiles()">
+        <option value="">— Name auswählen —</option>
+        {% for n in names %}
+        <option value="{{ n }}">{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="stats-row" id="statsRow" style="display:none">
+      <div class="stat"><div class="num" id="sTotal">0</div><div class="lbl">Gesamt</div></div>
+      <div class="stat"><div class="num" id="sImgs">0</div><div class="lbl">Bilder</div></div>
+      <div class="stat"><div class="num" id="sVids">0</div><div class="lbl">Videos</div></div>
+    </div>
+
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+let myFiles = [];
+let isAdmin = false;
+
+async function doLogin() {
+  const pw  = document.getElementById('loginPw').value;
+  const res = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password:pw, role:'class'}) });
+  if (res.ok) { initApp(); }
+  else { document.getElementById('loginErr').textContent = '❌ Falsches Passwort.'; }
+}
+
+async function doLogout() { await fetch('/logout',{method:'POST'}); location.reload(); }
+
+async function initApp() {
+  const res = await fetch('/api/session');
+  const d   = await res.json();
+  if (d.class_auth) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    isAdmin = !!d.admin_role;
+  }
+}
+
+(async () => { initApp(); })();
+
+async function loadMyFiles() {
+  const name = document.getElementById('nameSelect').value;
+  const el   = document.getElementById('content');
+  if (!name) { el.innerHTML=''; document.getElementById('statsRow').style.display='none'; return; }
+
+  el.innerHTML = '<div class="spinner">⏳ Lade deine Dateien…</div>';
+  const res  = await fetch(`/api/my-files?name=${encodeURIComponent(name)}`);
+  const data = await res.json();
+  if (data.status !== 'ok') { el.innerHTML='<div class="empty">⚠️ Fehler.</div>'; return; }
+
+  myFiles = data.files;
+  document.getElementById('sTotal').textContent = myFiles.length;
+  document.getElementById('sImgs').textContent  = myFiles.filter(f=>f.type==='image').length;
+  document.getElementById('sVids').textContent  = myFiles.filter(f=>f.type==='video').length;
+  document.getElementById('statsRow').style.display = 'flex';
+
+  if (!myFiles.length) { el.innerHTML='<div class="empty">📭 Noch keine Uploads.</div>'; return; }
+
+  el.innerHTML = '<div class="file-list">' + myFiles.map(f => `
+    <div class="file-card">
+      <div class="file-thumb">${f.type==='video' ? `<video src="${f.url}"></video>` : `<img src="${f.url}">`}</div>
+      <div class="file-body">
+        <div class="file-name">${f.category||'Sonstiges'}</div>
+        <div class="file-meta">${new Date(f.created).toLocaleDateString('de-DE')}</div>
+      </div>
+      <div class="file-actions">
+        <a class="btn-dl" href="${f.url}" download target="_blank">⬇ DL</a>
+        ${isAdmin ? `<button class="btn-del" onclick="deleteFile('${f.public_id}','${f.resource_type}','${name}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>`).join('') + '</div>';
+}
+
+async function deleteFile(pid, rt, name) {
+  if (!confirm('Datei wirklich löschen?')) return;
+  const res = await fetch('/api/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({public_id:pid, resource_type:rt, uploader:name}) });
+  const data = await res.json();
+  if (data.status==='ok') { showToast('✅ Gelöscht'); loadMyFiles(); }
+  else showToast('❌ ' + data.message);
+}
+
+function showToast(msg) {
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+</script>
+</body>
+</html>
