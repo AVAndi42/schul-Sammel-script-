@@ -1,454 +1,665 @@
-from flask import Flask, request, render_template, jsonify, session, redirect, url_for, send_file
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
-import os
-import io
-import zipfile
-import requests
-import json
-import sys
-import magic  # python-magic for MIME-type check
-from datetime import datetime
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Abschluss Video 26</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Mulish:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#f5f3ee; --surface:#ffffff; --border:#e2dfd8;
+      --accent:#1a1a1a; --pop:#ff5c35; --text:#1a1a1a; --muted:#9e9a93; --radius:14px;
+    }
+    [data-theme="dark"] {
+      --bg:#111; --surface:#1c1c1c; --border:#2c2c2c;
+      --accent:#e8ff4d; --pop:#ff5c35; --text:#f0f0f0; --muted:#666;
+    }
+    body { background:var(--bg); color:var(--text); font-family:'Mulish',sans-serif; min-height:100vh; transition:background 0.3s,color 0.3s; }
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
+    /* OFFLINE */
+    #offlineBanner { display:none; position:fixed; top:0; left:0; right:0; background:#ff5c35; color:white; text-align:center; font-size:0.82rem; font-weight:600; padding:0.5rem; z-index:999; }
 
-# ─── Cloudinary ───────────────────────────────────────────────
-cloudinary.config(
-    cloud_name = os.environ.get("CLOUD_NAME"),
-    api_key    = os.environ.get("API_KEY"),
-    api_secret = os.environ.get("API_SECRET")
-)
+    /* LOGIN */
+    #loginScreen { position:fixed; inset:0; background:var(--bg); z-index:500; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+    .login-box { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:2.5rem 2rem; width:100%; max-width:380px; box-shadow:0 8px 40px rgba(0,0,0,0.08); text-align:center; }
+    .login-box .film-icon { font-size:3rem; margin-bottom:1rem; }
+    .login-box h1 { font-family:'Syne',sans-serif; font-size:1.8rem; font-weight:800; margin-bottom:0.3rem; }
+    .login-box p { color:var(--muted); font-size:0.88rem; margin-bottom:1.5rem; }
+    .pw-input { width:100%; background:var(--bg); border:1.5px solid var(--border); border-radius:10px; color:var(--text); font-family:'Mulish',sans-serif; font-size:1rem; padding:0.8rem 1rem; margin-bottom:0.75rem; outline:none; text-align:center; letter-spacing:0.15em; transition:border-color 0.2s; }
+    .pw-input:focus { border-color:var(--accent); }
+    .remember-row { display:flex; align-items:center; justify-content:center; gap:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--muted); cursor:pointer; }
+    .remember-row input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+    .btn-primary { width:100%; background:var(--accent); color:white; border:none; border-radius:10px; padding:0.85rem; font-family:'Syne',sans-serif; font-weight:700; font-size:0.95rem; cursor:pointer; transition:opacity 0.2s,transform 0.1s; }
+    [data-theme="dark"] .btn-primary { color:#111; }
+    .btn-primary:hover { opacity:0.85; transform:translateY(-1px); }
+    .btn-primary:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+    .login-error { color:var(--pop); font-size:0.82rem; margin-top:0.5rem; min-height:1.2em; }
+    .admin-login-link { margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--border); }
+    .btn-admin-login { background:none; border:1px solid var(--border); color:var(--muted); padding:0.5rem 1.2rem; border-radius:8px; font-size:0.8rem; cursor:pointer; font-family:'Mulish',sans-serif; font-weight:600; transition:all 0.2s; }
+    .btn-admin-login:hover { border-color:var(--accent); color:var(--text); }
+    #adminLoginPanel { display:none; background:var(--bg); border:1.5px solid var(--border); border-radius:12px; padding:1.25rem; margin-top:1rem; text-align:left; }
+    .role-tabs { display:flex; gap:0.5rem; margin-bottom:0.75rem; }
+    .role-tab { flex:1; background:var(--bg); border:1.5px solid var(--border); color:var(--muted); padding:0.45rem; border-radius:8px; font-family:'Mulish',sans-serif; font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.2s; }
+    .role-tab.active { border-color:var(--accent); color:var(--text); }
 
-FOLDER = "schulfilm"
-MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "200"))
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'avi', 'm4v', 'mp3', 'wav', 'ogg', 'm4a', 'aac'}
-ALLOWED_MIME_TYPES = {
-    'image/png', 'image/jpeg', 'image/gif',
-    'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-m4v',
-    'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/x-m4a'
+    /* APP */
+    #app { display:none; }
+
+    /* NAV */
+    nav { background:var(--surface); border-bottom:1px solid var(--border); padding:0 1rem; display:flex; align-items:center; justify-content:space-between; height:56px; position:sticky; top:0; z-index:100; gap:0.5rem; }
+    .nav-brand { font-family:'Syne',sans-serif; font-weight:800; font-size:0.95rem; white-space:nowrap; flex-shrink:0; }
+    .nav-brand span { color:var(--pop); }
+    [data-theme="dark"] .nav-brand span { color:var(--accent); }
+    .nav-center { display:flex; gap:0.2rem; background:var(--bg); border-radius:10px; padding:0.2rem; flex-shrink:0; }
+    .nav-tab { background:none; border:none; padding:0.35rem 0.65rem; border-radius:8px; font-family:'Mulish',sans-serif; font-size:0.78rem; font-weight:600; color:var(--muted); cursor:pointer; transition:all 0.2s; position:relative; white-space:nowrap; }
+    .nav-tab.active { background:var(--surface); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+    .nav-badge { position:absolute; top:-4px; right:-4px; background:var(--pop); color:white; border-radius:99px; font-size:0.55rem; font-weight:800; padding:1px 4px; }
+    .nav-right { display:flex; align-items:center; gap:0.4rem; flex-shrink:0; }
+    .btn-icon { background:none; border:1px solid var(--border); color:var(--muted); width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:0.9rem; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+    .btn-icon:hover { border-color:var(--accent); color:var(--text); }
+    .btn-logout { background:none; border:1px solid var(--border); color:var(--muted); padding:0.28rem 0.6rem; border-radius:8px; font-size:0.72rem; cursor:pointer; font-family:'Mulish',sans-serif; font-weight:500; transition:all 0.2s; }
+    .btn-logout:hover { border-color:var(--pop); color:var(--pop); }
+    .btn-admin-nav { background:var(--accent); color:white; border:none; padding:0.28rem 0.65rem; border-radius:8px; font-size:0.72rem; cursor:pointer; font-family:'Mulish',sans-serif; font-weight:700; transition:opacity 0.2s; display:none; }
+    [data-theme="dark"] .btn-admin-nav { color:#111; }
+
+    /* ADMIN PANEL */
+    #adminPanel { display:none; background:var(--surface); border-bottom:1px solid var(--border); padding:0.75rem 1rem; }
+    .admin-inner { max-width:600px; margin:0 auto; }
+    .stats-row { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.6rem; }
+    .stat-pill { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.35rem 0.65rem; font-size:0.72rem; color:var(--muted); }
+    .stat-pill b { color:var(--text); }
+    .admin-actions { display:flex; gap:0.4rem; flex-wrap:wrap; }
+    .admin-chip { background:var(--bg); border:1.5px solid var(--border); border-radius:8px; padding:0.3rem 0.7rem; font-size:0.75rem; font-weight:600; cursor:pointer; color:var(--muted); transition:all 0.2s; font-family:'Mulish',sans-serif; }
+    .admin-chip:hover { border-color:var(--accent); color:var(--text); }
+
+    /* TABS */
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    /* UPLOAD TAB */
+    #uploadTab { padding:1.25rem 1rem; max-width:600px; margin:0 auto; }
+    .upload-header h2 { font-family:'Syne',sans-serif; font-size:1.3rem; font-weight:800; margin-bottom:0.2rem; }
+    .upload-header p { color:var(--muted); font-size:0.82rem; margin-bottom:1rem; }
+    .form-group { margin-bottom:0.9rem; }
+    .form-label { display:block; font-size:0.7rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:0.35rem; }
+    .req { color:var(--pop); }
+    select, textarea { width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:10px; color:var(--text); font-family:'Mulish',sans-serif; font-size:0.93rem; padding:0.65rem 1rem; outline:none; transition:border-color 0.2s; appearance:none; }
+    select { cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239e9a93' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 1rem center; padding-right:2.5rem; }
+    select:focus,textarea:focus { border-color:var(--accent); }
+    textarea { resize:vertical; min-height:60px; }
+    .dropzone { background:var(--surface); border:2px dashed var(--border); border-radius:var(--radius); padding:1.75rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; }
+    .dropzone:hover,.dropzone.drag { border-color:var(--accent); }
+    .dropzone.locked { opacity:0.5; cursor:not-allowed; pointer-events:none; }
+    .dropzone-icon { font-size:1.75rem; margin-bottom:0.4rem; }
+    .dropzone h3 { font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:700; margin-bottom:0.2rem; }
+    .dropzone p { color:var(--muted); font-size:0.75rem; }
+    input[type="file"] { display:none; }
+    .preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:5px; margin-top:0.6rem; }
+    .preview-item { position:relative; border-radius:8px; overflow:hidden; aspect-ratio:1; background:var(--bg); border:1px solid var(--border); }
+    .preview-item img,.preview-item video { width:100%; height:100%; object-fit:cover; }
+    .preview-remove { position:absolute; top:3px; right:3px; background:rgba(0,0,0,0.65); color:white; border:none; border-radius:50%; width:17px; height:17px; font-size:0.6rem; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .size-warning { background:rgba(255,92,53,0.08); border:1px solid rgba(255,92,53,0.25); color:var(--pop); border-radius:8px; padding:0.45rem 0.7rem; font-size:0.75rem; margin-top:0.4rem; }
+    .upload-progress { margin-top:0.7rem; display:none; }
+    .upload-progress.active { display:block; }
+    .prog-label { font-size:0.72rem; color:var(--muted); margin-bottom:0.25rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .progress-track { height:5px; background:var(--border); border-radius:99px; overflow:hidden; }
+    .progress-fill { height:100%; background:var(--accent); width:0%; transition:width 0.2s; border-radius:99px; }
+    .prog-overall { font-size:0.7rem; color:var(--muted); text-align:center; margin-top:0.2rem; }
+    .upload-status { margin-top:0.7rem; padding:0.6rem 0.85rem; border-radius:10px; font-size:0.83rem; display:none; }
+    .upload-status.ok  { display:block; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+    .upload-status.err { display:block; background:#fff1f0; border:1px solid #fecaca; color:#991b1b; }
+    .locked-banner { background:#fff8f0; border:1px solid #fed7aa; color:#9a3412; border-radius:10px; padding:0.7rem; text-align:center; font-size:0.83rem; margin-bottom:0.75rem; display:none; }
+
+    /* GALLERY */
+    #galleryTab { padding:1rem; }
+    .gallery-top { margin-bottom:0.75rem; }
+    .gallery-top h2 { font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:800; margin-bottom:0.6rem; }
+    .chip-row { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.4rem; }
+    .person-chip { background:var(--surface); border:1.5px solid var(--border); border-radius:8px; padding:0.3rem 0.65rem; font-size:0.72rem; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:0.3rem; white-space:nowrap; }
+    .person-chip:hover,.person-chip.active { border-color:var(--accent); color:var(--text); }
+    .person-chip .cnt { background:var(--bg); border-radius:99px; padding:0.1rem 0.4rem; font-size:0.62rem; font-weight:700; color:var(--muted); }
+    .person-chip.active .cnt { background:var(--accent); color:white; }
+    [data-theme="dark"] .person-chip.active .cnt { color:#111; }
+    .gallery-stats { font-size:0.72rem; color:var(--muted); margin-bottom:0.5rem; }
+    .masonry { columns:3 130px; gap:8px; }
+    .masonry-item { break-inside:avoid; margin-bottom:8px; border-radius:10px; overflow:hidden; position:relative; background:var(--surface); border:1px solid var(--border); cursor:pointer; animation:fadeIn 0.3s ease both; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+    .masonry-item img,.masonry-item video { width:100%; display:block; }
+    .audio-tile { height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:1.75rem; gap:3px; }
+    .audio-tile span { font-size:0.6rem; color:var(--muted); }
+    .item-overlay { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(to top,rgba(0,0,0,0.75),transparent); padding:0.5rem; opacity:0; transition:opacity 0.2s; }
+    .masonry-item:hover .item-overlay,.masonry-item:active .item-overlay { opacity:1; }
+    .item-overlay strong { display:block; color:white; font-size:0.75rem; }
+    .vid-badge { position:absolute; top:5px; right:5px; background:var(--pop); color:white; padding:1px 5px; border-radius:4px; font-size:0.58rem; font-weight:800; }
+    .cat-badge { position:absolute; top:5px; left:5px; background:rgba(0,0,0,0.55); color:white; padding:1px 5px; border-radius:4px; font-size:0.58rem; font-weight:700; backdrop-filter:blur(4px); }
+    .del-overlay { position:absolute; top:5px; right:5px; background:rgba(255,92,53,0.85); border:none; color:white; border-radius:5px; padding:2px 6px; font-size:0.6rem; cursor:pointer; }
+
+    /* LIGHTBOX */
+    .lightbox { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.96); z-index:300; align-items:center; justify-content:center; touch-action:none; }
+    .lightbox.open { display:flex; }
+    #lbInner { max-width:92vw; max-height:80vh; display:flex; align-items:center; justify-content:center; }
+    #lbInner img { max-width:92vw; max-height:78vh; border-radius:8px; object-fit:contain; display:block; }
+    #lbInner video { max-width:92vw; max-height:78vh; border-radius:8px; display:block; }
+    .lb-close { position:fixed; top:1rem; right:1rem; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.15); color:white; width:2.2rem; height:2.2rem; border-radius:50%; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .lb-arrow { position:fixed; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.15); color:white; width:2.5rem; height:2.5rem; border-radius:50%; font-size:1.3rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
+    .lb-arrow:hover { background:rgba(255,255,255,0.2); }
+    #lbPrev { left:0.75rem; }
+    #lbNext { right:0.75rem; }
+    .lb-counter { position:fixed; top:1rem; left:50%; transform:translateX(-50%); background:rgba(30,30,30,0.85); border-radius:99px; padding:0.3rem 0.9rem; font-size:0.72rem; color:rgba(255,255,255,0.7); backdrop-filter:blur(8px); }
+    .lb-meta { position:fixed; bottom:1.25rem; left:50%; transform:translateX(-50%); background:rgba(30,30,30,0.9); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:0.4rem 1rem; font-size:0.78rem; color:rgba(255,255,255,0.65); white-space:nowrap; backdrop-filter:blur(10px); max-width:90vw; overflow:hidden; text-overflow:ellipsis; }
+    .lb-meta strong { color:white; }
+
+    /* MODAL */
+    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; padding:1rem; backdrop-filter:blur(4px); }
+    .modal.open { display:flex; }
+    .modal-box { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:1.75rem; max-width:320px; width:100%; text-align:center; }
+    .modal-box .icon { font-size:2rem; margin-bottom:0.6rem; }
+    .modal-box h3 { font-family:'Syne',sans-serif; font-size:1.2rem; font-weight:800; margin-bottom:0.3rem; }
+    .modal-box p { color:var(--muted); font-size:0.8rem; margin-bottom:1.25rem; }
+    .modal-btns { display:flex; gap:0.6rem; }
+    .btn-cancel { flex:1; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:0.6rem; font-family:'Mulish',sans-serif; cursor:pointer; }
+    .btn-confirm-del { flex:1; background:var(--pop); border:none; color:white; border-radius:10px; padding:0.6rem; font-family:'Syne',sans-serif; font-weight:700; cursor:pointer; }
+
+    /* TOAST */
+    .toast { position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%) translateY(12px); background:var(--accent); color:white; border-radius:10px; padding:0.5rem 1.2rem; font-size:0.8rem; font-weight:600; opacity:0; transition:all 0.3s; pointer-events:none; z-index:400; white-space:nowrap; }
+    [data-theme="dark"] .toast { color:#111; }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    .spinner { text-align:center; padding:3rem; color:var(--muted); font-size:0.85rem; }
+  </style>
+</head>
+<body>
+
+<div id="offlineBanner">⚠️ Server antwortet nicht – bitte warten…</div>
+
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="film-icon">🎬</div>
+    <h1>Abschluss Video 26</h1>
+    <p>Gib das Klassen-Passwort ein.</p>
+    <input class="pw-input" type="password" id="loginPw" placeholder="Passwort" onkeydown="if(event.key==='Enter')doLogin()">
+    <label class="remember-row">
+      <input type="checkbox" id="rememberMe"> Angemeldet bleiben
+    </label>
+    <button class="btn-primary" onclick="doLogin()">Einloggen</button>
+    <div class="login-error" id="loginErr"></div>
+    <div class="admin-login-link">
+      <button class="btn-admin-login" onclick="toggleAdminLogin()">🔐 Als Admin anmelden</button>
+    </div>
+    <div id="adminLoginPanel">
+      <div class="role-tabs">
+        <button class="role-tab active" id="roleRoot" onclick="setRole('root')">⭐ Root</button>
+        <button class="role-tab" id="roleAdmin" onclick="setRole('admin')">👤 Admin</button>
+      </div>
+      <input class="pw-input" type="password" id="adminPw" placeholder="Admin-Passwort" onkeydown="if(event.key==='Enter')doAdminLogin()" style="margin-bottom:0.75rem">
+      <button class="btn-primary" onclick="doAdminLogin()">Als Admin einloggen</button>
+      <div class="login-error" id="adminErr"></div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <nav>
+    <div class="nav-brand">🎬 <span>Abschluss</span> 26</div>
+    <div class="nav-center">
+      <button class="nav-tab active" onclick="switchTab('upload',this)">📤 Upload</button>
+      <button class="nav-tab" onclick="switchTab('gallery',this)" id="galleryBtn">
+        🖼️ Galerie
+        <span class="nav-badge" id="galleryBadge" style="display:none">✓</span>
+      </button>
+    </div>
+    <div class="nav-right">
+      <button class="btn-icon" id="themeBtn" onclick="toggleTheme()" title="Dark/Light">🌙</button>
+      <button class="btn-admin-nav" id="adminNavBtn" onclick="toggleAdminSection()">⚙️</button>
+      <button class="btn-logout" onclick="doLogout()">↩</button>
+    </div>
+  </nav>
+
+  <div id="adminPanel">
+    <div class="admin-inner">
+      <div class="stats-row" id="adminStats"></div>
+      <div class="admin-actions" id="adminActionsEl"></div>
+    </div>
+  </div>
+
+  <div id="uploadTab" class="tab-content active">
+    <div class="upload-header">
+      <h2>Dateien hochladen</h2>
+      <p id="uploadSub">Wähle deinen Namen und lade Fotos, Videos & Audio hoch.</p>
+    </div>
+    <div class="locked-banner" id="lockedBanner">🔒 Upload wurde vom Admin gesperrt.</div>
+
+    <div class="form-group" id="nameGroup">
+      <label class="form-label">Dein Name <span class="req">*</span></label>
+      <select id="nameSelect" onchange="checkForm()">
+        <option value="">— Name auswählen —</option>
+        {% for n in names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Kategorie</label>
+      <select id="categorySelect">
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Kommentar <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <textarea id="commentInput" placeholder="Was zeigen die Dateien?"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Dateien <span class="req">*</span></label>
+      <div class="dropzone" id="dropzone"
+        onclick="document.getElementById('fileInput').click()"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="event.preventDefault();this.classList.remove('drag');handleFiles(event.dataTransfer.files)">
+        <div class="dropzone-icon">📁</div>
+        <h3>Klicken oder hierher ziehen</h3>
+        <p>Bilder, Videos & Audio · max. {{ max_mb }} MB</p>
+        <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" onchange="handleFiles(this.files)">
+      </div>
+      <div id="sizeWarnings"></div>
+      <div class="preview-grid" id="previewGrid"></div>
+    </div>
+
+    <div class="upload-progress" id="uploadProgress">
+      <div class="prog-label" id="progLabel"></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="prog-overall" id="progOverall"></div>
+    </div>
+    <div class="upload-status" id="uploadStatus"></div>
+    <button class="btn-primary" id="uploadBtn" disabled onclick="doUpload()" style="margin-top:0.7rem">Jetzt hochladen</button>
+  </div>
+
+  <div id="galleryTab" class="tab-content">
+    <div class="gallery-top">
+      <h2>Alle Uploads</h2>
+      <div class="chip-row" id="personStats"></div>
+      <div class="chip-row" id="catFilters">
+        <button class="person-chip active" onclick="setCat('all',this)">Alle</button>
+        {% for c in categories %}<button class="person-chip" onclick="setCat('{{ c }}',this)">{{ c }}</button>{% endfor %}
+      </div>
+      <div class="gallery-stats" id="galleryStats"></div>
+    </div>
+    <div id="galleryContent" class="spinner">⏳ Galerie wird geladen…</div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="closeLb()">✕</button>
+  <div class="lb-counter" id="lbCounter"></div>
+  <button class="lb-arrow" id="lbPrev" onclick="lbNav(-1)">‹</button>
+  <div id="lbInner"></div>
+  <button class="lb-arrow" id="lbNext" onclick="lbNav(1)">›</button>
+  <div class="lb-meta" id="lbMeta"></div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div class="icon" id="modalIcon">🗑️</div>
+    <h3 id="modalTitle">Löschen?</h3>
+    <p id="modalDesc">Diese Aktion kann nicht rückgängig gemacht werden.</p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Abbrechen</button>
+      <button class="btn-confirm-del" onclick="confirmAction()">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const MAX_MB = {{ max_mb }};
+let selectedFiles = [], allFiles = [], visibleFiles = [];
+let catFilter = 'all', personFilter = 'all';
+let adminRole = null, adminName = null, uploadLocked = false;
+let lbIndex = 0, pendingAction = null;
+let selectedRole = 'root';
+
+// ── THEME ────────────────────────────────────────
+(function() {
+  const t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+})();
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  document.getElementById('themeBtn').textContent = next === 'dark' ? '☀️' : '🌙';
 }
 
-# ─── Passwords ────────────────────────────────────────────────
-CLASS_PASSWORD = os.environ.get("CLASS_PASSWORD", "klasse2025")
+// ── OFFLINE ──────────────────────────────────────
+window.addEventListener('offline', () => document.getElementById('offlineBanner').style.display = 'block');
+window.addEventListener('online',  () => document.getElementById('offlineBanner').style.display = 'none');
+fetch('/ping').catch(() => document.getElementById('offlineBanner').style.display = 'block');
 
-def parse_admins(env_key):
-    raw = os.environ.get(env_key, "")
-    result = {}
-    for entry in raw.split(","):
-        entry = entry.strip()
-        if ":" in entry:
-            name, pw = entry.split(":", 1)
-            result[name.strip()] = pw.strip()
-    return result
+// ── AUTH ─────────────────────────────────────────
+function toggleAdminLogin() {
+  const p = document.getElementById('adminLoginPanel');
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+}
+function setRole(r) {
+  selectedRole = r;
+  document.getElementById('roleRoot').classList.toggle('active', r === 'root');
+  document.getElementById('roleAdmin').classList.toggle('active', r === 'admin');
+}
 
-SUPER_ADMINS = parse_admins("SUPER_ADMINS")
-CO_ADMINS    = parse_admins("CO_ADMINS")
+async function doLogin() {
+  const pw = document.getElementById('loginPw').value;
+  const res = await fetch('/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password: pw, role: 'class'})});
+  if (res.ok) {
+    if (document.getElementById('rememberMe').checked) localStorage.setItem('av26_remember','class');
+    initApp();
+  } else {
+    document.getElementById('loginErr').textContent = '❌ Falsches Passwort.';
+  }
+}
 
-# FIX 1: Kein hardcoded Fallback mehr – App startet nicht ohne konfigurierten Admin
-if not SUPER_ADMINS:
-    if os.environ.get("FLASK_ENV") == "development":
-        # Nur im lokalen Dev-Modus erlaubt
-        SUPER_ADMINS = {"Dev": "dev123"}
-        print("⚠️  WARNUNG: Kein SUPER_ADMINS gesetzt – Dev-Fallback aktiv. Nicht für Produktion!", file=sys.stderr)
-    else:
-        print("❌ FEHLER: Env-Variable SUPER_ADMINS ist nicht gesetzt. Server wird nicht gestartet.", file=sys.stderr)
-        sys.exit(1)
+async function doAdminLogin() {
+  const pw = document.getElementById('adminPw').value;
+  const res = await fetch('/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password: pw, role: 'admin'})});
+  if (res.ok) {
+    if (document.getElementById('rememberMe').checked) localStorage.setItem('av26_remember','admin');
+    initApp();
+  } else {
+    document.getElementById('adminErr').textContent = '❌ Falsches Admin-Passwort.';
+  }
+}
 
-# ─── Class list ───────────────────────────────────────────────
-DEFAULT_NAMES = [
-    "Andreas", "Daniel", "German", "Jonas", "Luca", "Lara",
-    "Jakob", "Emil", "Elena", "Anika", "Sarah", "Emma",
-    "Michl", "Finn", "Lucas", "Jan", "Louis", "Silas", "Herr Knöferl"
-]
+async function doLogout() {
+  localStorage.removeItem('av26_remember');
+  await fetch('/logout', {method:'POST'});
+  location.reload();
+}
 
-CATEGORIES = ["Abschlussfahrt", "Unterricht", "Pause", "Sonstiges"]
+async function initApp() {
+  const res  = await fetch('/api/session');
+  const data = await res.json();
+  if (!data.class_auth) return;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  if (data.admin_role) {
+    adminRole = data.admin_role;
+    adminName = data.admin_name;
+    document.getElementById('adminNavBtn').style.display = 'flex';
+    document.getElementById('nameGroup').style.display = 'none';
+    document.getElementById('uploadSub').textContent = `Eingeloggt als ${adminRole==='super'?'Root':'Admin'}: ${adminName}`;
+    await buildAdminSection();
+  }
+  await checkLock();
+  loadGallery();
+}
 
-def get_class_names():
-    raw = os.environ.get("CLASS_NAMES", "")
-    if raw:
-        return [n.strip() for n in raw.split(",") if n.strip()]
-    return DEFAULT_NAMES
+// Auto-session restore
+(async () => {
+  const rem = localStorage.getItem('av26_remember');
+  if (!rem) return;
+  const res  = await fetch('/api/session');
+  const data = await res.json();
+  if (data.class_auth) { initApp(); }
+  else { localStorage.removeItem('av26_remember'); }
+})();
 
-def is_super_admin():
-    return session.get("admin_role") == "super"
+// ── LOCK ─────────────────────────────────────────
+async function checkLock() {
+  const res  = await fetch('/api/upload-lock');
+  const data = await res.json();
+  uploadLocked = data.locked;
+  if (uploadLocked && !adminRole) {
+    document.getElementById('lockedBanner').style.display = 'block';
+    document.getElementById('dropzone').classList.add('locked');
+    document.getElementById('uploadBtn').disabled = true;
+  }
+}
 
-def is_co_admin():
-    return session.get("admin_role") in ("super", "co")
+// ── ADMIN SECTION ────────────────────────────────
+async function buildAdminSection() {
+  const lockRes  = await fetch('/api/upload-lock');
+  uploadLocked = (await lockRes.json()).locked;
+  document.getElementById('adminActionsEl').innerHTML = `
+    <button class="admin-chip" onclick="downloadZip('')">⬇ Alles als ZIP</button>
+    ${adminRole==='super' ? `<button class="admin-chip" id="lockChip" onclick="toggleLock()">${uploadLocked?'🔓 Entsperren':'🔒 Upload sperren'}</button>` : ''}
+    <a href="/admin" class="admin-chip" style="text-decoration:none">📊 Vollständiges Admin-Panel</a>
+  `;
+}
 
-def is_class():
-    return session.get("class_auth") is True
+function toggleAdminSection() {
+  const p = document.getElementById('adminPanel');
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+}
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+async function toggleLock() {
+  uploadLocked = !uploadLocked;
+  await fetch('/api/upload-lock', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({locked: uploadLocked})});
+  const chip = document.getElementById('lockChip');
+  if (chip) chip.textContent = uploadLocked ? '🔓 Entsperren' : '🔒 Upload sperren';
+  showToast(uploadLocked ? '🔒 Upload gesperrt' : '🔓 Upload freigegeben');
+}
 
-# FIX 2: MIME-Type-Prüfung über Dateiinhalt, nicht nur Endung
-def allowed_mime(file_bytes):
-    mime = magic.from_buffer(file_bytes, mime=True)
-    return mime in ALLOWED_MIME_TYPES
+function downloadZip(name) {
+  const url = '/api/download-zip' + (name ? `?name=${encodeURIComponent(name)}` : '');
+  showToast('⏳ ZIP wird erstellt…');
+  window.location.href = url;
+}
 
-# ─── FIX 3: Persistente Upload-Sperre via Cloudinary-Metadata ─
-# Statt upload_lock.json (geht bei Render-Redeploy verloren) wird
-# der Lock-Status als Cloudinary-Folder-Metadata gespeichert.
-LOCK_KEY = "schulfilm_upload_locked"
+// ── TABS ─────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(tab+'Tab').classList.add('active');
+  btn.classList.add('active');
+  if (tab === 'gallery') {
+    document.getElementById('galleryBadge').style.display = 'none';
+    if (!allFiles.length) loadGallery();
+  }
+}
 
-def get_lock_status():
-    try:
-        result = cloudinary.api.root_folders()
-        # Wir missbrauchen einen dedizierten Lock-Tag in Cloudinary
-        # Einfachste persistente Lösung ohne extra DB: Lock-Datei in Cloudinary
-        res = cloudinary.api.resources(
-            type="upload",
-            resource_type="raw",
-            prefix=f"{FOLDER}/_lock",
-            max_results=1
-        )
-        return len(res.get("resources", [])) > 0
-    except Exception as e:
-        app.logger.warning(f"Lock-Status konnte nicht gelesen werden: {e}")
-        return False
+// ── UPLOAD ───────────────────────────────────────
+function checkForm() {
+  const name = adminName || document.getElementById('nameSelect').value;
+  document.getElementById('uploadBtn').disabled = !name || selectedFiles.length === 0;
+}
 
-def set_lock_status(locked):
-    try:
-        if locked:
-            # Leere Raw-Datei als Lock-Marker hochladen
-            cloudinary.uploader.upload(
-                io.BytesIO(b"locked"),
-                public_id=f"{FOLDER}/_lock/status",
-                resource_type="raw",
-                overwrite=True
-            )
-        else:
-            cloudinary.uploader.destroy(f"{FOLDER}/_lock/status", resource_type="raw")
-    except Exception as e:
-        app.logger.error(f"Lock-Status konnte nicht gesetzt werden: {e}")
+function handleFiles(fileList) {
+  const newFiles = Array.from(fileList);
+  const warns = document.getElementById('sizeWarnings');
+  warns.innerHTML = '';
+  const tooBig = [];
+  newFiles.forEach(f => {
+    if (f.size / (1024*1024) > MAX_MB) tooBig.push(f.name);
+    else selectedFiles.push(f);
+  });
+  if (tooBig.length) warns.innerHTML = `<div class="size-warning">⚠️ Zu groß: ${tooBig.join(', ')}</div>`;
+  rebuildPreview();
+  checkForm();
+}
 
-# ─────────────────────────────────────────────────────────────
-#  AUTH
-# ─────────────────────────────────────────────────────────────
-@app.route("/login", methods=["POST"])
-def login():
-    pw   = request.json.get("password", "")
-    role = request.json.get("role", "class")
+function rebuildPreview() {
+  const grid = document.getElementById('previewGrid');
+  grid.innerHTML = '';
+  selectedFiles.forEach((f, i) => {
+    const item = document.createElement('div'); item.className = 'preview-item';
+    if (f.type.startsWith('video')) {
+      const v = document.createElement('video'); v.src = URL.createObjectURL(f); v.muted = true; item.appendChild(v);
+    } else if (f.type.startsWith('audio')) {
+      const w = document.createElement('div');
+      w.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:3px;background:var(--bg)';
+      w.innerHTML = '<span style="font-size:1.4rem">🎵</span><span style="font-size:0.55rem;color:var(--muted);padding:0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:78px">' + f.name + '</span>';
+      item.appendChild(w);
+    } else {
+      const img = document.createElement('img'); img.src = URL.createObjectURL(f); item.appendChild(img);
+    }
+    const rm = document.createElement('button'); rm.className = 'preview-remove'; rm.textContent = '✕';
+    const idx = i;
+    rm.onclick = (e) => { e.stopPropagation(); selectedFiles.splice(idx,1); rebuildPreview(); checkForm(); };
+    item.appendChild(rm);
+    grid.appendChild(item);
+  });
+}
 
-    if role == "class":
-        if pw == CLASS_PASSWORD:
-            session["class_auth"] = True
-            return jsonify({"status": "ok", "role": "class"})
-        return jsonify({"status": "error", "message": "Falsches Passwort"}), 401
+async function doUpload() {
+  const name = adminName || document.getElementById('nameSelect').value;
+  const pw = document.getElementById('uploadProgress');
+  const pf = document.getElementById('progressFill');
+  const pl = document.getElementById('progLabel');
+  const po = document.getElementById('progOverall');
+  const st = document.getElementById('uploadStatus');
+  st.style.display = 'none';
+  pw.classList.add('active');
+  document.getElementById('uploadBtn').disabled = true;
 
-    if role == "admin":
-        for name, apw in SUPER_ADMINS.items():
-            if pw == apw:
-                session["admin_role"] = "super"
-                session["admin_name"] = name
-                session["class_auth"] = True
-                return jsonify({"status": "ok", "role": "super", "name": name})
-        for name, apw in CO_ADMINS.items():
-            if pw == apw:
-                session["admin_role"] = "co"
-                session["admin_name"] = name
-                session["class_auth"] = True
-                return jsonify({"status": "ok", "role": "co", "name": name})
-        return jsonify({"status": "error", "message": "Falsches Passwort"}), 401
+  let uploaded = 0, errors = [];
+  for (let i = 0; i < selectedFiles.length; i++) {
+    const f = selectedFiles[i];
+    pl.textContent = `${i+1}/${selectedFiles.length}: ${f.name}`;
+    po.textContent = Math.round((i/selectedFiles.length)*100) + '%';
+    pf.style.width = (i/selectedFiles.length*100) + '%';
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('category', document.getElementById('categorySelect').value);
+    fd.append('comment', document.getElementById('commentInput').value);
+    fd.append('files', f);
+    try {
+      const res  = await fetch('/upload', {method:'POST', body: fd});
+      const data = await res.json();
+      if (data.status === 'ok') uploaded++;
+      else errors.push(...(data.errors || [f.name]));
+    } catch(e) { errors.push(f.name); }
+  }
 
-    return jsonify({"status": "error"}), 400
+  pf.style.width = '100%'; po.textContent = '100%';
+  setTimeout(() => { pw.classList.remove('active'); pf.style.width = '0%'; }, 800);
 
-@app.route("/logout", methods=["POST"])
-def logout():
-    session.clear()
-    return jsonify({"status": "ok"})
+  if (uploaded > 0) {
+    st.className = 'upload-status ok';
+    st.textContent = `✅ ${uploaded} Datei(en) hochgeladen!`;
+    selectedFiles = [];
+    document.getElementById('previewGrid').innerHTML = '';
+    document.getElementById('galleryBadge').style.display = 'inline';
+    loadGallery();
+  }
+  if (errors.length) {
+    st.className = 'upload-status err';
+    st.textContent = '❌ Fehler: ' + errors.join(', ');
+  }
+  checkForm();
+}
 
-# ─────────────────────────────────────────────────────────────
-#  PAGES
-# ─────────────────────────────────────────────────────────────
-@app.route("/")
-def index():
-    return render_template("index.html",
-                           names=get_class_names(),
-                           categories=CATEGORIES,
-                           max_mb=MAX_FILE_MB)
+// ── GALLERY ──────────────────────────────────────
+async function loadGallery() {
+  const res  = await fetch('/api/files');
+  const data = await res.json();
+  if (data.status !== 'ok') return;
+  allFiles = data.files;
+  buildPersonChips();
+  renderGallery();
+  if (adminRole) {
+    const persons = new Set(allFiles.map(f=>f.uploader)).size;
+    document.getElementById('adminStats').innerHTML = `
+      <div class="stat-pill"><b>${allFiles.length}</b> Dateien</div>
+      <div class="stat-pill"><b>${allFiles.filter(f=>f.type==='image').length}</b> Bilder</div>
+      <div class="stat-pill"><b>${allFiles.filter(f=>f.type==='video').length}</b> Videos</div>
+      <div class="stat-pill"><b>${persons}</b> Personen</div>
+    `;
+  }
+}
 
-@app.route("/manage")
-def manage():
-    # FIX 4: Auth-Check auch auf Seitenebene
-    if not is_class():
-        return redirect(url_for("index"))
-    return render_template("manage.html", names=get_class_names())
+function buildPersonChips() {
+  const counts = {};
+  allFiles.forEach(f => { counts[f.uploader] = (counts[f.uploader]||0)+1; });
+  let html = `<button class="person-chip active" onclick="setPerson('all',this)">Alle <span class="cnt">${allFiles.length}</span></button>`;
+  Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([n,c]) => {
+    html += `<button class="person-chip" onclick="setPerson('${n}',this)">${n} <span class="cnt">${c}</span></button>`;
+  });
+  document.getElementById('personStats').innerHTML = html;
+}
 
-@app.route("/admin")
-def admin():
-    # Auth-Check auch hier
-    if not is_co_admin():
-        return redirect(url_for("index"))
-    return render_template("admin.html",
-                           names=get_class_names(),
-                           categories=CATEGORIES,
-                           max_mb=MAX_FILE_MB)
+function renderGallery() {
+  visibleFiles = allFiles.filter(f =>
+    (catFilter==='all'||f.category===catFilter) &&
+    (personFilter==='all'||f.uploader===personFilter)
+  );
+  document.getElementById('galleryStats').textContent = visibleFiles.length + ' Dateien';
+  const el = document.getElementById('galleryContent');
+  if (!visibleFiles.length) { el.className='spinner'; el.innerHTML='📭 Noch keine Dateien.'; return; }
+  el.className = 'masonry';
+  el.innerHTML = visibleFiles.map((f,i) => `
+    <div class="masonry-item" onclick="openLb(${i})" style="animation-delay:${Math.min(i*0.02,0.4)}s">
+      ${f.type==='video'
+        ? `<video src="${f.url}" muted preload="metadata"></video><span class="vid-badge">VIDEO</span>`
+        : f.type==='raw'
+          ? `<div class="audio-tile">🎵<span>${f.uploader}</span></div>`
+          : `<img src="${f.url}" loading="lazy">`}
+      <span class="cat-badge">${f.category||''}</span>
+      <div class="item-overlay"><strong>${f.uploader}</strong></div>
+      ${adminRole ? `<button class="del-overlay" onclick="event.stopPropagation();askDelete('${f.public_id}','${f.resource_type||f.type}','${f.uploader}')">🗑</button>` : ''}
+    </div>`).join('');
+}
 
-# ─────────────────────────────────────────────────────────────
-#  UPLOAD
-# ─────────────────────────────────────────────────────────────
-@app.route("/upload", methods=["POST"])
-def upload():
-    if not is_class():
-        return jsonify({"status": "error", "message": "Nicht eingeloggt"}), 403
+function setCat(v,b) { catFilter=v; document.querySelectorAll('#catFilters .person-chip').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderGallery(); }
+function setPerson(v,b) { personFilter=v; document.querySelectorAll('#personStats .person-chip').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderGallery(); }
 
-    if get_lock_status() and not is_super_admin():
-        return jsonify({"status": "error", "message": "Upload ist gesperrt"}), 403
+// ── LIGHTBOX ─────────────────────────────────────
+function openLb(i) { lbIndex=i; renderLb(); document.getElementById('lightbox').classList.add('open'); }
 
-    files    = request.files.getlist("files")
-    name     = request.form.get("name", "").strip()
-    category = request.form.get("category", "Sonstiges")
-    comment  = request.form.get("comment", "").strip()
+function renderLb() {
+  const f = visibleFiles[lbIndex];
+  const inner = document.getElementById('lbInner');
+  if (f.type==='video') {
+    inner.innerHTML = `<video src="${f.url}" controls autoplay playsinline></video>`;
+  } else if (f.type==='raw') {
+    inner.innerHTML = `<audio src="${f.url}" controls autoplay style="width:min(300px,88vw);margin:3rem auto;display:block"></audio>`;
+  } else {
+    inner.innerHTML = `<img src="${f.url}">`;
+  }
+  document.getElementById('lbMeta').innerHTML = `<strong>${f.uploader}</strong> · ${f.category||''}`;
+  document.getElementById('lbCounter').textContent = `${lbIndex+1} / ${visibleFiles.length}`;
+  document.getElementById('lbPrev').style.display = lbIndex > 0 ? 'flex' : 'none';
+  document.getElementById('lbNext').style.display = lbIndex < visibleFiles.length-1 ? 'flex' : 'none';
+}
 
-    if is_co_admin() and not name:
-        name = session.get("admin_name")
+function lbNav(dir) { const n=lbIndex+dir; if(n>=0&&n<visibleFiles.length){lbIndex=n;renderLb();} }
+function closeLb() { document.getElementById('lightbox').classList.remove('open'); }
 
-    if not name:
-        return jsonify({"status": "error", "message": "Bitte Namen auswählen"}), 400
-    if not files:
-        return jsonify({"status": "error", "message": "Keine Dateien"}), 400
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key==='ArrowRight') lbNav(1);
+  if (e.key==='ArrowLeft')  lbNav(-1);
+  if (e.key==='Escape')     closeLb();
+});
 
-    uploaded = []
-    errors   = []
+let touchStartX = 0;
+document.getElementById('lightbox').addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, {passive:true});
+document.getElementById('lightbox').addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 45) lbNav(dx < 0 ? 1 : -1);
+});
+document.getElementById('lightbox').addEventListener('click', e => { if(e.target===document.getElementById('lightbox')) closeLb(); });
 
-    for file in files:
-        if not allowed_file(file.filename):
-            errors.append(f"{file.filename}: Dateityp nicht erlaubt")
-            continue
+// ── DELETE ───────────────────────────────────────
+function askDelete(publicId, resourceType, uploader) {
+  pendingAction = {publicId, resourceType, uploader};
+  document.getElementById('modalTitle').textContent = 'Datei löschen?';
+  document.getElementById('modalDesc').textContent = `Datei von „${uploader}" wird permanent gelöscht.`;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); pendingAction=null; }
+async function confirmAction() {
+  if (!pendingAction) return; closeModal();
+  const res  = await fetch('/api/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({public_id:pendingAction.publicId, resource_type:pendingAction.resourceType})});
+  const data = await res.json();
+  if (data.status==='ok') { allFiles=allFiles.filter(f=>f.public_id!==pendingAction.publicId); buildPersonChips(); renderGallery(); showToast('✅ Gelöscht'); }
+  else showToast('❌ '+data.message);
+}
+document.getElementById('modal').addEventListener('click', e => { if(e.target===document.getElementById('modal')) closeModal(); });
 
-        file_bytes = file.read()
-
-        # FIX 2: MIME-Type-Check auf Dateiinhalt
-        if not allowed_mime(file_bytes):
-            errors.append(f"{file.filename}: Dateiinhalt entspricht nicht dem erlaubten Typ")
-            continue
-
-        size_mb = len(file_bytes) / (1024 * 1024)
-        if size_mb > MAX_FILE_MB:
-            errors.append(f"{file.filename} ist zu groß ({size_mb:.1f} MB)")
-            continue
-
-        try:
-            result = cloudinary.uploader.upload(
-                io.BytesIO(file_bytes),
-                folder        = f"{FOLDER}/{name}",
-                resource_type = "auto",
-                context       = f"uploader={name}|category={category}|comment={comment}"
-            )
-            uploaded.append({
-                "url":       result["secure_url"],
-                "public_id": result["public_id"]
-            })
-        except Exception as e:
-            errors.append(f"{file.filename}: {str(e)}")
-
-    return jsonify({
-        "status":   "ok" if uploaded else "error",
-        "uploaded": len(uploaded),
-        "errors":   errors
-    })
-
-# ─────────────────────────────────────────────────────────────
-#  FILES API
-# ─────────────────────────────────────────────────────────────
-def fetch_all_files():
-    """Fetch images + videos from Cloudinary – mit Paginierung."""  # FIX 3
-    results = []
-    for rtype in ("image", "video", "raw"):  # raw = audio in Cloudinary
-        next_cursor = None
-        while True:
-            kwargs = dict(
-                type          = "upload",
-                resource_type = rtype,
-                prefix        = FOLDER,
-                max_results   = 500,
-                context       = True
-            )
-            if next_cursor:
-                kwargs["next_cursor"] = next_cursor
-
-            res = cloudinary.api.resources(**kwargs)
-
-            for r in res.get("resources", []):
-                parts    = r["public_id"].split("/")
-                uploader = parts[1] if len(parts) > 2 else "Unbekannt"
-                # Lock-Marker überspringen
-                if uploader == "_lock":
-                    continue
-                ctx = r.get("context", {}).get("custom", {})
-                results.append({
-                    "url":           r["secure_url"],
-                    "public_id":     r["public_id"],
-                    "resource_type": rtype,
-                    "type":          rtype,
-                    "uploader":      uploader,
-                    "category":      ctx.get("category", "Sonstiges"),
-                    "comment":       ctx.get("comment", ""),
-                    "bytes":         r.get("bytes", 0),
-                    "created":       r.get("created_at", "")
-                })
-
-            next_cursor = res.get("next_cursor")
-            if not next_cursor:
-                break  # Alle Seiten geladen
-
-    results.sort(key=lambda x: x["created"], reverse=True)
-    return results
-
-@app.route("/api/files")
-def api_files():
-    if not is_class():
-        return jsonify({"status": "error", "message": "Nicht eingeloggt"}), 403
-    try:
-        files = fetch_all_files()
-        return jsonify({"status": "ok", "files": files})
-    except Exception as e:
-        app.logger.error(f"api_files Fehler: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/api/my-files")
-def api_my_files():
-    if not is_class():
-        return jsonify({"status": "error", "message": "Nicht eingeloggt"}), 403
-    name = request.args.get("name", "")
-    if not name:
-        return jsonify({"status": "error", "message": "Kein Name"}), 400
-    try:
-        files = fetch_all_files()
-        mine  = [f for f in files if f["uploader"] == name]
-        return jsonify({"status": "ok", "files": mine})
-    except Exception as e:
-        app.logger.error(f"api_my_files Fehler: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/api/admin/files")
-def api_admin_files():
-    if not is_co_admin():
-        return jsonify({"status": "error", "message": "Nicht autorisiert"}), 403
-    try:
-        files = fetch_all_files()
-        return jsonify({"status": "ok", "files": files})
-    except Exception as e:
-        app.logger.error(f"api_admin_files Fehler: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# ─────────────────────────────────────────────────────────────
-#  DELETE
-# ─────────────────────────────────────────────────────────────
-@app.route("/api/delete", methods=["POST"])
-def delete_file():
-    data          = request.json or {}
-    public_id     = data.get("public_id")
-    resource_type = data.get("resource_type", "image")
-
-    if not is_co_admin():
-        return jsonify({"status": "error", "message": "Nur Admins können Dateien löschen"}), 403
-
-    if not public_id:
-        return jsonify({"status": "error", "message": "Keine public_id angegeben"}), 400
-
-    try:
-        cloudinary.uploader.destroy(public_id, resource_type=resource_type)
-        return jsonify({"status": "ok"})
-    except cloudinary.exceptions.Error as e:
-        app.logger.error(f"Cloudinary delete Fehler: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/api/delete-person", methods=["POST"])
-def delete_person():
-    if not is_super_admin():
-        return jsonify({"status": "error", "message": "Nur Super-Admin"}), 403
-
-    name = (request.json or {}).get("name", "")
-    if not name:
-        return jsonify({"status": "error", "message": "Kein Name"}), 400
-
-    try:
-        cloudinary.api.delete_resources_by_prefix(f"{FOLDER}/{name}")
-        cloudinary.api.delete_folder(f"{FOLDER}/{name}")
-        return jsonify({"status": "ok"})
-    except cloudinary.exceptions.Error as e:
-        app.logger.error(f"delete_person Fehler für '{name}': {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# ─────────────────────────────────────────────────────────────
-#  MANAGE
-# ─────────────────────────────────────────────────────────────
-@app.route("/api/set-manage-name", methods=["POST"])
-def set_manage_name():
-    if not is_class():
-        return jsonify({"status": "error"}), 403
-    name = (request.json or {}).get("name", "")
-    session["manage_name"] = name
-    return jsonify({"status": "ok"})
-
-# ─────────────────────────────────────────────────────────────
-#  UPLOAD LOCK (Super-Admin only)
-# ─────────────────────────────────────────────────────────────
-@app.route("/api/upload-lock", methods=["GET"])
-def get_upload_lock():
-    return jsonify({"locked": get_lock_status()})
-
-@app.route("/api/upload-lock", methods=["POST"])
-def set_upload_lock():
-    if not is_super_admin():
-        return jsonify({"status": "error", "message": "Nur Super-Admin"}), 403
-    locked = request.json.get("locked", False)
-    set_lock_status(locked)
-    return jsonify({"status": "ok", "locked": locked})
-
-# ─────────────────────────────────────────────────────────────
-#  ZIP DOWNLOAD (Co-Admin and Super-Admin)
-# ─────────────────────────────────────────────────────────────
-@app.route("/api/download-zip")
-def download_zip():
-    if not is_co_admin():
-        return jsonify({"status": "error", "message": "Nicht autorisiert"}), 403
-
-    filter_name = request.args.get("name", "")
-
-    try:
-        files = fetch_all_files()
-        if filter_name:
-            files = [f for f in files if f["uploader"] == filter_name]
-
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in files:
-                try:
-                    resp = requests.get(f["url"], timeout=30)
-                    resp.raise_for_status()
-                    ext_map = {"video": "mp4", "raw": "mp3", "image": "jpg"}
-                    ext   = ext_map.get(f["type"], "bin")
-                    safe  = f["uploader"].replace(" ", "_")
-                    fname = f"{safe}_{f['public_id'].split('/')[-1]}.{ext}"
-                    zf.writestr(f"{f['uploader']}/{fname}", resp.content)
-                except requests.RequestException as e:
-                    app.logger.warning(f"ZIP: Datei übersprungen ({f['url']}): {e}")
-                    continue
-
-        zip_buffer.seek(0)
-        zip_name = f"schulfilm_{filter_name or 'alle'}_{datetime.now().strftime('%Y%m%d')}.zip"
-        return send_file(zip_buffer, mimetype="application/zip",
-                         as_attachment=True, download_name=zip_name)
-    except Exception as e:
-        app.logger.error(f"download_zip Fehler: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# ─────────────────────────────────────────────────────────────
-#  SESSION INFO
-# ─────────────────────────────────────────────────────────────
-@app.route("/api/session")
-def get_session():
-    return jsonify({
-        "class_auth":  session.get("class_auth", False),
-        "admin_role":  session.get("admin_role", None),
-        "admin_name":  session.get("admin_name", None),
-        "manage_name": session.get("manage_name", None),
-    })
-
-if __name__ == "__main__":
-    app.run(debug=True)
+// ── TOAST ─────────────────────────────────────────
+function showToast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show'; setTimeout(()=>t.className='toast',3000); }
+</script>
+</body>
+</html>
