@@ -649,13 +649,24 @@ function askDelete(publicId, resourceType, uploader) {
   document.getElementById('modal').classList.add('open');
 }
 function closeModal() { document.getElementById('modal').classList.remove('open'); pendingAction=null; }
+
 async function confirmAction() {
-  if (!pendingAction) return; closeModal();
-  const res  = await fetch('/api/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({public_id:pendingAction.publicId, resource_type:pendingAction.resourceType})});
-  const data = await res.json();
-  if (data.status==='ok') { allFiles=allFiles.filter(f=>f.public_id!==pendingAction.publicId); buildPersonChips(); renderGallery(); showToast('✅ Gelöscht'); }
-  else showToast('❌ '+data.message);
+  if (!pendingAction) return;
+  const action = {publicId: pendingAction.publicId, resourceType: pendingAction.resourceType};
+  closeModal();
+  try {
+    const res  = await fetch('/api/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({public_id: action.publicId, resource_type: action.resourceType})});
+    const data = await res.json();
+    if (data.status==='ok') { allFiles=allFiles.filter(f=>f.public_id!==action.publicId); buildPersonChips(); renderGallery(); showToast('✅ Gelöscht'); }
+    else showToast('❌ ' + (data.message||'Fehler – bist du als Admin eingeloggt?'));
+  } catch(e) { showToast('❌ Netzwerkfehler'); }
 }
+
+
+
+
+
+
 document.getElementById('modal').addEventListener('click', e => { if(e.target===document.getElementById('modal')) closeModal(); });
 
 // ── TOAST ─────────────────────────────────────────
