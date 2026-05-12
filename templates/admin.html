@@ -120,8 +120,8 @@
     <h1>Admin Login</h1>
     <p>Nur für autorisierte Personen.</p>
     <div class="role-tabs">
-      <button class="role-tab active" id="roleSuper" onclick="setRole('super')">⭐ Super-Admin</button>
-      <button class="role-tab" id="roleCo" onclick="setRole('co')">👤 Co-Admin</button>
+      <button class="role-tab active" id="roleSuper" onclick="setRole('super')">⭐ Root</button>
+      <button class="role-tab" id="roleCo" onclick="setRole('co')">👤 Admin</button>
     </div>
     <input type="password" id="loginPw" placeholder="Passwort" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn-primary" onclick="doLogin()">Einloggen</button>
@@ -216,7 +216,7 @@ async function doLogin() {
     adminRole = data.role;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    document.getElementById('roleBadge').textContent = data.role === 'super' ? '⭐ SUPER-ADMIN' : '👤 CO-ADMIN';
+    document.getElementById('roleBadge').textContent = data.role === 'super' ? '⭐ ROOT' : '👤 ADMIN';
     if (data.role === 'co') document.getElementById('roleBadge').classList.add('co');
     document.getElementById('adminNameLabel').textContent = data.name || '';
     initAdmin();
@@ -234,7 +234,7 @@ async function doLogout() { await fetch('/logout',{method:'POST'}); location.rel
     adminRole = d.admin_role;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    document.getElementById('roleBadge').textContent = d.admin_role==='super' ? '⭐ SUPER-ADMIN' : '👤 CO-ADMIN';
+    document.getElementById('roleBadge').textContent = d.admin_role==='super' ? '⭐ ROOT' : '👤 ADMIN';
     if (d.admin_role==='co') document.getElementById('roleBadge').classList.add('co');
     document.getElementById('adminNameLabel').textContent = d.admin_name || '';
     initAdmin();
