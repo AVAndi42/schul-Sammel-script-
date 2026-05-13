@@ -1031,6 +1031,37 @@ const Wizard = {
   }
 };
 
+
+// ── LAZY LOADING ─────────────────────────────────
+const LazyLoader = {
+  _obs: null,
+  init() {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('img.lazy[data-src]').forEach(img => {
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+        img.classList.remove('lazy');
+      });
+      return;
+    }
+    if (this._obs) this._obs.disconnect();
+    this._obs = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+          img.removeAttribute('data-src');
+          img.classList.remove('lazy');
+          img.style.background = '';
+        }
+        this._obs.unobserve(img);
+      });
+    }, { rootMargin: '200px 0px' });
+    document.querySelectorAll('img.lazy[data-src]').forEach(img => this._obs.observe(img));
+  }
+};
+
 // ── GALLERY ─────────────────────────────────────
 const Gallery = {
   files: [],
