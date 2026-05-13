@@ -567,27 +567,26 @@ const Auth = {
     document.getElementById('roleAdmin').classList.toggle('active', r === 'admin');
   },
   async loginClass() {
-    const pw = document.getElementById('loginPw').value;
-    const d = await api.post('/login', {password: pw, role: 'class'});
+    const pw  = document.getElementById('loginPw').value;
+    const rem = document.getElementById('rememberMe').checked;
+    const d   = await api.post('/login', {password: pw, role: 'class', remember: rem});
     if (d.status === 'ok') {
-      if (document.getElementById('rememberMe').checked) localStorage.setItem('av26_rem', '1');
       App.init();
     } else {
       UI.setText('loginErr', errMsg('ERR_401', '❌ Falsches Passwort.'));
     }
   },
   async loginAdmin() {
-    const pw = document.getElementById('adminPw').value;
-    const d = await api.post('/login', {password: pw, role: 'admin'});
+    const pw  = document.getElementById('adminPw').value;
+    const rem = document.getElementById('rememberMe').checked;
+    const d   = await api.post('/login', {password: pw, role: 'admin', remember: rem});
     if (d.status === 'ok') {
-      if (document.getElementById('rememberMe').checked) localStorage.setItem('av26_rem', '1');
       App.init();
     } else {
       UI.setText('adminErr', '❌ Falsches Admin-Passwort.');
     }
   },
   async logout() {
-    localStorage.removeItem('av26_rem');
     await api.post('/logout', {});
     location.reload();
   }
@@ -640,12 +639,10 @@ const App = {
   }
 };
 
-// Auto-restore session
+// Auto-restore session (Cookie wird vom Browser automatisch mitgeschickt)
 (async () => {
-  if (!localStorage.getItem('av26_rem')) return;
   const d = await api.get('/api/session');
   if (d.class_auth) App.init();
-  else localStorage.removeItem('av26_rem');
 })();
 
 // ── ADMIN ───────────────────────────────────────
