@@ -15,7 +15,6 @@ import cloudinary.exceptions
 import cloudinary.uploader
 import magic
 import requests
-from flask_compress import Compress
 from flask import (Flask, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
@@ -25,9 +24,6 @@ from flask import (Flask, jsonify, redirect, render_template,
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
-
-# Gzip compression for all JSON/HTML responses (~70% smaller)
-Compress(app)
 
 cloudinary.config(
     cloud_name=os.environ.get("CLOUD_NAME"),
@@ -266,15 +262,6 @@ def admin():
                            categories=CATEGORIES,
                            max_mb=MAX_FILE_MB)
 
-
-
-@app.route("/sw.js")
-def service_worker():
-    return app.send_static_file("sw.js"), 200, {
-        "Content-Type": "application/javascript",
-        "Service-Worker-Allowed": "/",
-        "Cache-Control": "no-cache",
-    }
 
 @app.route("/ping")
 def ping():
