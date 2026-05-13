@@ -137,6 +137,7 @@
       <span style="color:var(--muted);font-size:0.85rem" id="adminNameLabel"></span>
     </div>
     <div class="nav-right">
+      <button class="btn-nav-link" id="reportsBadgeBtn" onclick="showReportsTab()" style="display:none;background:rgba(255,92,53,0.1);border:1px solid rgba(255,92,53,0.3);color:#ff5c35;position:relative">🚩 Meldungen <span id="reportsBadge" style="background:#ff5c35;color:white;border-radius:99px;padding:1px 6px;font-size:0.65rem;font-weight:800;margin-left:3px">0</span></button>
       <a href="/" class="btn-nav-link">← Zurück</a>
       <button class="btn-nav-link" onclick="doLogout()">Abmelden</button>
     </div>
@@ -408,6 +409,43 @@ function showToast(msg, type='') {
   const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show '+type;
   setTimeout(()=>t.className='toast',3000);
 }
+
+// ── REPORTS ──────────────────────────────────────
+async function loadReports() {
+  try {
+    const res  = await fetch('/api/reports');
+    const data = await res.json();
+    if (data.status !== 'ok') return;
+    const count = data.count || 0;
+    const btn   = document.getElementById('reportsBadgeBtn');
+    const badge = document.getElementById('reportsBadge');
+    if (count > 0) {
+      btn.style.display = 'inline-flex';
+      badge.textContent = count;
+    }
+    const grid = document.getElementById('reportsGrid');
+    if (!data.reports.length) { grid.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">Keine Meldungen.</p>'; return; }
+    grid.innerHTML = data.reports.map(f => `
+      <div style="background:var(--surface);border:1.5px solid rgba(255,92,53,0.4);border-radius:12px;overflow:hidden">
+        ${f.type==='video' ? `<video src="${f.url}" muted style="width:100%;height:130px;object-fit:cover">` : `<img src="${f.url}" style="width:100%;height:130px;object-fit:cover">`}
+        <div style="padding:0.6rem">
+          <strong style="font-size:0.82rem">${f.uploader}</strong>
+          <p style="font-size:0.72rem;color:var(--muted)">${f.category||''}</p>
+          <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
+            <button onclick="deleteFile('${f.public_id}','${f.resource_type||f.type}',this.closest('div').parentElement)" style="flex:1;background:rgba(255,92,53,0.1);border:1px solid rgba(255,92,53,0.3);color:#ff5c35;border-radius:6px;padding:4px;font-size:0.72rem;cursor:pointer">🗑 Löschen</button>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch(e) { console.error('loadReports:', e); }
+}
+
+function showReportsTab() {
+  document.getElementById('reportsSection').style.display = 'block';
+  document.getElementById('reportsSection').scrollIntoView({behavior:'smooth'});
+}
+
+// Load reports on init
+document.addEventListener('DOMContentLoaded', () => { setTimeout(loadReports, 1500); });
 </script>
 </body>
 </html>
