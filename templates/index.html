@@ -1076,6 +1076,8 @@ const Gallery = {
         return 0; // 'date' – already sorted by server
       });
     UI.setText('galleryStats', `${this.visible.length} Dateien`);
+    // Trigger lazy loader after DOM update
+    requestAnimationFrame(() => LazyLoader.init());
     const el = document.getElementById('galleryGrid');
     if (!this.visible.length) {
       el.className = 'spinner'; el.innerHTML = '📭 Noch keine Dateien.'; return;
@@ -1086,11 +1088,13 @@ const Gallery = {
       const delay = `animation-delay:${Math.min(i * 0.02, 0.4)}s`;
       const tags = (f.tags && f.tags.length)
         ? `<div class="tag-chips">${f.tags.map(t => `<span class="tag-chip">#${t}</span>`).join('')}</div>` : '';
+      const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
       const media = f.type === 'video'
-        ? `<video src="${f.url}" muted preload="metadata"></video><span class="badge-vid">VIDEO</span>`
+        ? `<img data-src="${CL.videoThumb(f.url)}" src="${BLANK}" class="lazy" style="width:100%;display:block;min-height:80px;background:var(--brd)"><span class="badge-vid">VIDEO</span>`
         : f.type === 'raw'
           ? `<div class="audio-tile">🎵<span>${f.uploader}</span></div>`
-          : `<img src="${f.url}" loading="lazy">`;
+          : `<img data-src="${CL.thumb(f.url)}" src="${BLANK}" class="lazy" style="min-height:60px;background:var(--brd)">`;
+
       const delBtn = App.adminRole
         ? `<button class="btn-del" onclick="event.stopPropagation();Admin.askDelete('${f.public_id}','${f.resource_type || f.type}','${f.uploader}')">🗑</button>` : '';
       return `<div class="masonry-item" onclick="Lightbox.open(${i})" style="${delay}">
@@ -1136,18 +1140,49 @@ const Gallery = {
 // ── LIGHTBOX ────────────────────────────────────
 const Lightbox = {
   idx: 0,
-  open(i) { this.idx = i; this._render(); document.getElementById('lightbox').classList.add('open'); },
+  open(i) {
+    this.idx = i;
+    this._render();
+    document.getElementById('lightbox').classList.add('open');
+    // Prefetch neighbours
+    [i + 1, i - 1].forEach(j => {
+      if (j >= 0 && j < Gallery.visible.length) {
+        const f = Gallery.visible[j];
+        if (f.type === 'image') { const img = new Image(); img.src = f.url; }
+      }
+    });
+  },
   close()  { document.getElementById('lightbox').classList.remove('open'); },
-  nav(d)   { const n = this.idx + d; if (n >= 0 && n < Gallery.visible.length) { this.idx = n; this._render(); } },
+  nav(d) {
+    const n = this.idx + d;
+    if (n >= 0 && n < Gallery.visible.length) { this.idx = n; this._render(); }
+    // Prefetch next and previous
+    [n + 1, n - 1].forEach(i => {
+      if (i >= 0 && i < Gallery.visible.length) {
+        const f = Gallery.visible[i];
+        if (f.type === 'image') { const img = new Image(); img.src = f.url; }
+      }
+    });
+  },
   _render() {
     const f = Gallery.visible[this.idx];
     const inner = document.getElementById('lbInner');
     if (f.type === 'video') {
+      // Full resolution video
       inner.innerHTML = `<video src="${f.url}" controls autoplay playsinline></video>`;
     } else if (f.type === 'raw') {
       inner.innerHTML = `<audio src="${f.url}" controls autoplay style="width:min(300px,88vw);margin:3rem auto;display:block"></audio>`;
     } else {
-      inner.innerHTML = `<img src="${f.url}">`;
+      // Show low-res placeholder instantly, then swap to full original
+      const thumb = CL.thumb(f.url, 80);
+      const full  = f.url; // original, no transformation
+      inner.innerHTML = `<img src="${thumb}" style="max-width:92vw;max-height:78vh;border-radius:8px;object-fit:contain;filter:blur(8px);transition:filter .3s" id="lbImg">`;
+      const img = new Image();
+      img.onload = () => {
+        const el = document.getElementById('lbImg');
+        if (el) { el.src = full; el.style.filter = 'none'; }
+      };
+      img.src = full;
     }
     UI.set('lbMeta', `<strong>${f.uploader}</strong> · ${f.category || ''}${f.tags && f.tags.length ? ' · ' + f.tags.map(t => '#' + t).join(' ') : ''}`);
     UI.setText('lbCounter', `${this.idx + 1} / ${Gallery.visible.length}`);
@@ -1207,6 +1242,15 @@ const Report = {
     } catch { toast(errMsg('ERR_NET')); }
   }
 };
+
+// ── SERVICE WORKER ───────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(r => console.log('SW scope:', r.scope))
+      .catch(e => console.warn('SW failed:', e));
+  });
+}
 </script>
 
 <!-- ZIP SPINNER OVERLAY -->
