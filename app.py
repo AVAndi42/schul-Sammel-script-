@@ -59,8 +59,8 @@ if not SUPER_ADMINS:
 # ─── Class list ───────────────────────────────────────────────
 DEFAULT_NAMES = [
     "Andreas", "Daniel", "German", "Jonas", "Luca", "Lara",
-    "Jakob", "Emil", "Elena", "Anika", "Sarah", "Emma",
-    "Michl", "Finn", "Lucas", "Jan", "Louis", "Silas", "Herr Knöferl"
+    "Jakob", "Emil", "Elena", "Annika", "Sarah", "Emma",
+    "Michl", "Finn", "Lucas", "Jan", "Luis", "Silas", "Herr Knöferl"
 ]
 
 CATEGORIES = ["Abschlussfahrt", "Unterricht", "Pause", "Sonstiges"]
