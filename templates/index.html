@@ -315,7 +315,7 @@
   <!-- UPLOAD TAB -->
   <div id="uploadTab" class="tab active">
     <div class="section-title syne">Dateien hochladen</div>
-    <p class="section-sub" id="uploadSub">Wähle deinen Namen und lade Fotos, Videos & Audio hoch.</p>
+    <p class="section-sub" id="uploadSub">👆 Wähle zuerst deinen Namen, dann Dateien hochladen.</p>
     <div class="locked-alert" id="lockedAlert">🔒 Upload wurde vom Admin gesperrt.</div>
 
     <div class="field" id="nameField">
@@ -343,7 +343,7 @@
         <div class="dropzone-icon">📁</div>
         <h3 class="syne" id="dropzoneTitle">Klicken oder hierher ziehen</h3>
         <p>Bilder, Videos, Audio, Sticker (GIF/WebP) · max. {{ max_mb }} MB</p>
-        <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" onchange="Upload.addFiles(this.files)" id="fileInput">
+        <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" onchange="Upload.addFiles(this.files)" oninput="Upload.addFiles(this.files)">
       </div>
       <div id="sizeWarning"></div>
       <div class="preview-grid" id="previewGrid"></div>
@@ -453,7 +453,7 @@
 <script>
 const CFG = {
   maxMb: {{ max_mb }},
-  WIZARD: true,   // ← Tag-Wizard an/ausschalten (true = an, false = direkt hochladen)
+  WIZARD: {{ 'true' if wizard_enabled else 'false' }},  // ← gesteuert über WIZARD_ENABLED in app.py
 };
 
 // ── ERROR CODES ─────────────────────────────────

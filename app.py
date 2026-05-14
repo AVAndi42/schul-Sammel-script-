@@ -33,19 +33,22 @@ cloudinary.config(
     api_secret=os.environ.get("API_SECRET"),
 )
 
-FOLDER      = "schulfilm"
-MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "200"))
-IS_DEV      = os.environ.get("FLASK_ENV") == "development"
+FOLDER          = "schulfilm"
+MAX_FILE_MB     = int(os.environ.get("MAX_FILE_MB", "200"))
+IS_DEV          = os.environ.get("FLASK_ENV") == "development"
+WIZARD_ENABLED  = False   # True = Tag-Wizard aktiv, False = direkt hochladen
 
 ALLOWED_EXTENSIONS = {
-    "png", "jpg", "jpeg", "gif", "webp",
-    "mp4", "mov", "avi", "m4v",
+    "png", "jpg", "jpeg", "gif", "webp", "heic", "heif",
+    "mp4", "mov", "avi", "m4v", "webm", "mkv",
     "mp3", "wav", "ogg", "m4a", "aac",
 }
 
 ALLOWED_MIME_TYPES = {
     "image/png", "image/jpeg", "image/gif", "image/webp",
+    "image/heic", "image/heif",
     "video/mp4", "video/quicktime", "video/x-msvideo", "video/x-m4v",
+    "video/webm", "video/x-matroska",
     "audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4",
     "audio/aac", "audio/x-m4a",
 }
@@ -330,7 +333,8 @@ def index():
     return render_template("index.html",
                            names=get_class_names(),
                            categories=CATEGORIES,
-                           max_mb=MAX_FILE_MB)
+                           max_mb=MAX_FILE_MB,
+                           wizard_enabled=WIZARD_ENABLED)
 
 
 @app.route("/manage")
@@ -390,7 +394,7 @@ def upload():
         data = f.read()
 
         if not allowed_mime(data):
-            errors.append({"file": f.filename, "code": "ERR_MIME", "message": "MIME-Typ ungültig"})
+            errors.append({"file": f.filename, "code": "ERR_MIME", "message": f"Dateityp nicht erlaubt ({f.filename.rsplit('.',1)[-1].upper()})"})
             continue
 
         if len(data) / (1024 * 1024) > MAX_FILE_MB:
