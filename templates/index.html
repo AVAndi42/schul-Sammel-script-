@@ -537,8 +537,8 @@ Theme.init();
   if (isMobile) {
     const t = document.getElementById('dropzoneTitle');
     if (t) t.textContent = 'Tippen um Dateien auszuwählen';
-    const fi = document.getElementById('fileInput');
-    if (fi) fi.setAttribute('capture', 'environment');
+    // capture-Attribut bewusst NICHT gesetzt – sonst kann iPhone nur die
+    // Kamera öffnen und keine Fotos aus der Bibliothek auswählen.
   }
 })();
 
