@@ -3,13 +3,11 @@ Abschluss Video 26 – Flask Backend
 Struktur: Config → Helpers → Auth → Pages → API
 """
 
-import hashlib
-import hmac
 import io
 import os
 import sys
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import cloudinary
 import cloudinary.api
@@ -17,7 +15,8 @@ import cloudinary.exceptions
 import cloudinary.uploader
 import magic
 import requests
-from flask import (Flask, jsonify, make_response, redirect, render_template,
+from flask_compress import Compress
+from flask import (Flask, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
 # ══════════════════════════════════════════════════════════════
@@ -27,95 +26,31 @@ from flask import (Flask, jsonify, make_response, redirect, render_template,
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
 
+# Gzip compression for all JSON/HTML responses (~70% smaller)
+Compress(app)
+
 cloudinary.config(
     cloud_name=os.environ.get("CLOUD_NAME"),
     api_key=os.environ.get("API_KEY"),
     api_secret=os.environ.get("API_SECRET"),
 )
 
-FOLDER          = "schulfilm"
-MAX_FILE_MB     = int(os.environ.get("MAX_FILE_MB", "200"))
-IS_DEV          = os.environ.get("FLASK_ENV") == "development"
-WIZARD_ENABLED  = False   # True = Tag-Wizard aktiv, False = direkt hochladen
+FOLDER      = "schulfilm"
+MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "200"))
+IS_DEV      = os.environ.get("FLASK_ENV") == "development"
 
 ALLOWED_EXTENSIONS = {
-    "png", "jpg", "jpeg", "gif", "webp", "heic", "heif",
-    "mp4", "mov", "avi", "m4v", "webm", "mkv",
+    "png", "jpg", "jpeg", "gif", "webp",
+    "mp4", "mov", "avi", "m4v",
     "mp3", "wav", "ogg", "m4a", "aac",
 }
 
 ALLOWED_MIME_TYPES = {
     "image/png", "image/jpeg", "image/gif", "image/webp",
-    "image/heic", "image/heif",
     "video/mp4", "video/quicktime", "video/x-msvideo", "video/x-m4v",
-    "video/webm", "video/x-matroska",
     "audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4",
     "audio/aac", "audio/x-m4a",
 }
-
-REMEMBER_COOKIE   = "rm_auth"          # Cookie-Name
-REMEMBER_DAYS     = 30                  # Gültigkeit in Tagen
-
-
-def _sign(value: str) -> str:
-    """Einfache HMAC-Signatur damit das Cookie nicht fälschbar ist."""
-    return hmac.new(
-        app.secret_key.encode(),
-        value.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-
-
-def _make_token(role: str, name: str) -> str:
-    """Erstellt einen signierten Token  →  'role:name:hmac'."""
-    payload = f"{role}:{name}"
-    return f"{payload}:{_sign(payload)}"
-
-
-def _verify_token(token: str):
-    """Gibt (role, name) zurück oder None wenn ungültig/verfälscht."""
-    try:
-        parts = token.split(":", 2)
-        if len(parts) != 3:
-            return None
-        role, name, sig = parts
-        expected = _sign(f"{role}:{name}")
-        if not hmac.compare_digest(expected, sig):
-            return None
-        return role, name
-    except Exception:
-        return None
-
-
-def _apply_remember_cookie(response, role: str, name: str):
-    """Setzt den Remember-Me-Cookie auf der Response."""
-    response.set_cookie(
-        REMEMBER_COOKIE,
-        _make_token(role, name),
-        max_age=60 * 60 * 24 * REMEMBER_DAYS,
-        httponly=True,
-        secure=not IS_DEV,   # HTTPS in Produktion
-        samesite="Lax",
-    )
-    return response
-
-
-def _restore_session_from_cookie():
-    """Liest den Cookie und füllt die Session – nur wenn Session leer."""
-    if session.get("class_auth"):
-        return  # bereits eingeloggt
-    token = request.cookies.get(REMEMBER_COOKIE)
-    if not token:
-        return
-    result = _verify_token(token)
-    if not result:
-        return
-    role, name = result
-    if role == "class":
-        session["class_auth"] = True
-    elif role in ("super", "co"):
-        session.update(admin_role=role, admin_name=name, class_auth=True)
-
 
 DEFAULT_NAMES = [
     "Andreas", "Daniel", "German", "Jonas", "Luca", "Lara",
@@ -262,46 +197,27 @@ def fetch_files(prefix: str = FOLDER) -> list:
 #  AUTH ROUTES
 # ══════════════════════════════════════════════════════════════
 
-@app.before_request
-def auto_login():
-    """Stellt die Session automatisch aus dem Remember-Me-Cookie wieder her."""
-    _restore_session_from_cookie()
-
-
 @app.route("/login", methods=["POST"])
 def login():
-    data     = request.json or {}
-    pw       = data.get("password", "")
-    role     = data.get("role", "class")
-    remember = bool(data.get("remember", False))
+    data = request.json or {}
+    pw   = data.get("password", "")
+    role = data.get("role", "class")
 
     if role == "class":
         if pw == CLASS_PASSWORD:
             session["class_auth"] = True
-            resp = ok({"role": "class"})
-            if remember:
-                resp = make_response(resp)
-                _apply_remember_cookie(resp, "class", "")
-            return resp
+            return ok({"role": "class"})
         return err("Falsches Passwort", "ERR_401", 401)
 
     if role == "admin":
         for name, apw in SUPER_ADMINS.items():
             if pw == apw:
                 session.update(admin_role="super", admin_name=name, class_auth=True)
-                resp = ok({"role": "super", "name": name})
-                if remember:
-                    resp = make_response(resp)
-                    _apply_remember_cookie(resp, "super", name)
-                return resp
+                return ok({"role": "super", "name": name})
         for name, apw in CO_ADMINS.items():
             if pw == apw:
                 session.update(admin_role="co", admin_name=name, class_auth=True)
-                resp = ok({"role": "co", "name": name})
-                if remember:
-                    resp = make_response(resp)
-                    _apply_remember_cookie(resp, "co", name)
-                return resp
+                return ok({"role": "co", "name": name})
         return err("Falsches Passwort", "ERR_401", 401)
 
     return err("Ungültige Rolle", "ERR_400", 400)
@@ -310,9 +226,7 @@ def login():
 @app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
-    resp = make_response(ok())
-    resp.delete_cookie(REMEMBER_COOKIE)
-    return resp
+    return ok()
 
 
 @app.route("/api/session")
@@ -333,8 +247,7 @@ def index():
     return render_template("index.html",
                            names=get_class_names(),
                            categories=CATEGORIES,
-                           max_mb=MAX_FILE_MB,
-                           wizard_enabled=WIZARD_ENABLED)
+                           max_mb=MAX_FILE_MB)
 
 
 @app.route("/manage")
@@ -353,6 +266,15 @@ def admin():
                            categories=CATEGORIES,
                            max_mb=MAX_FILE_MB)
 
+
+
+@app.route("/sw.js")
+def service_worker():
+    return app.send_static_file("sw.js"), 200, {
+        "Content-Type": "application/javascript",
+        "Service-Worker-Allowed": "/",
+        "Cache-Control": "no-cache",
+    }
 
 @app.route("/ping")
 def ping():
@@ -394,7 +316,7 @@ def upload():
         data = f.read()
 
         if not allowed_mime(data):
-            errors.append({"file": f.filename, "code": "ERR_MIME", "message": f"Dateityp nicht erlaubt ({f.filename.rsplit('.',1)[-1].upper()})"})
+            errors.append({"file": f.filename, "code": "ERR_MIME", "message": "MIME-Typ ungültig"})
             continue
 
         if len(data) / (1024 * 1024) > MAX_FILE_MB:
@@ -560,36 +482,57 @@ def get_reports():
 #  ZIP DOWNLOAD
 # ══════════════════════════════════════════════════════════════
 
+def _generate_zip_stream(files, filter_name):
+    """Generator für streaming ZIP ohne großen RAM-Buffer."""
+    EXT_MAP = {"video": "mp4", "raw": "mp3", "image": "jpg"}
+    with zipfile.ZipFile(io.BytesIO(), "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("_manifest.txt", f"Generated {datetime.now()}\nFiles: {len(files)}")
+    
+    for f in files:
+        try:
+            resp = requests.get(f["url"], timeout=30, stream=True)
+            resp.raise_for_status()
+            ext   = EXT_MAP.get(f["type"], "bin")
+            safe  = f["uploader"].replace(" ", "_")
+            fname = f"{safe}_{f['public_id'].split('/')[-1]}.{ext}"
+            yield fname, f"{f['uploader']}/", resp.raw.read()
+        except requests.RequestException as e:
+            app.logger.warning(f"ZIP skip {f['url']}: {e}")
+
 @app.route("/api/download-zip")
 def download_zip():
     if not is_admin():
         return err("Nicht autorisiert", "ERR_403", 403)
 
     filter_name = request.args.get("name", "")
-    EXT_MAP     = {"video": "mp4", "raw": "mp3", "image": "jpg"}
-
     try:
         files = fetch_files()
         if filter_name:
             files = [f for f in files if f["uploader"] == filter_name]
 
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in files:
-                try:
-                    resp = requests.get(f["url"], timeout=30)
-                    resp.raise_for_status()
-                    ext   = EXT_MAP.get(f["type"], "bin")
-                    safe  = f["uploader"].replace(" ", "_")
-                    fname = f"{safe}_{f['public_id'].split('/')[-1]}.{ext}"
-                    zf.writestr(f"{f['uploader']}/{fname}", resp.content)
-                except requests.RequestException as e:
-                    app.logger.warning(f"ZIP skip {f['url']}: {e}")
+        def stream_zip():
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for f in files:
+                    try:
+                        resp = requests.get(f["url"], timeout=30, stream=True)
+                        resp.raise_for_status()
+                        ext   = {"video": "mp4", "raw": "mp3", "image": "jpg"}.get(f["type"], "bin")
+                        safe  = f["uploader"].replace(" ", "_")
+                        fname = f"{safe}_{f['public_id'].split('/')[-1]}.{ext}"
+                        zf.writestr(f"{f['uploader']}/{fname}", resp.content)
+                    except requests.RequestException as e:
+                        app.logger.warning(f"ZIP skip {f['url']}: {e}")
+            buf.seek(0)
+            yield buf.read()
 
-        buf.seek(0)
         name = f"abschluss_{filter_name or 'alle'}_{datetime.now().strftime('%Y%m%d')}.zip"
-        return send_file(buf, mimetype="application/zip",
-                         as_attachment=True, download_name=name)
+        return send_file(
+            io.BytesIO(b"".join(stream_zip())),
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=name
+        )
     except Exception as e:
         app.logger.error(f"download_zip: {e}")
         return err(str(e), "ERR_500", 500)

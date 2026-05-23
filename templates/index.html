@@ -131,6 +131,7 @@
     .queue-status.uploading{color:var(--acc)}
     .queue-status.done{color:#16a34a}
     .queue-status.error{color:var(--pop)}
+    .queue-status.retrying{color:#f59e0b}
     .queue-tags{font-size:.62rem;color:var(--mu);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
     /* ── GALLERY TAB ── */
@@ -251,6 +252,7 @@
     .queue-status-bar{background:var(--bg);border-radius:8px;padding:.4rem .65rem;font-size:.72rem;color:var(--mu);margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem}
     .queue-dot{width:7px;height:7px;border-radius:50%;background:var(--pop);animation:pulse 1.2s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes zipProg{0%{width:0%;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0%;margin-left:100%}}
 
     /* ── TOAST ── */
     #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(12px);background:var(--acc);color:#fff;border-radius:10px;padding:.5rem 1.2rem;font-size:.8rem;font-weight:600;opacity:0;transition:all .3s;pointer-events:none;z-index:400;white-space:nowrap}
@@ -315,7 +317,7 @@
   <!-- UPLOAD TAB -->
   <div id="uploadTab" class="tab active">
     <div class="section-title syne">Dateien hochladen</div>
-    <p class="section-sub" id="uploadSub">👆 Wähle zuerst deinen Namen, dann Dateien hochladen.</p>
+    <p class="section-sub" id="uploadSub">Wähle deinen Namen und lade Fotos, Videos & Audio hoch.</p>
     <div class="locked-alert" id="lockedAlert">🔒 Upload wurde vom Admin gesperrt.</div>
 
     <div class="field" id="nameField">
@@ -343,7 +345,7 @@
         <div class="dropzone-icon">📁</div>
         <h3 class="syne" id="dropzoneTitle">Klicken oder hierher ziehen</h3>
         <p>Bilder, Videos, Audio, Sticker (GIF/WebP) · max. {{ max_mb }} MB</p>
-        <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" onchange="Upload.addFiles(this.files)" oninput="Upload.addFiles(this.files)">
+        <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" onchange="Upload.addFiles(this.files)" id="fileInput">
       </div>
       <div id="sizeWarning"></div>
       <div class="preview-grid" id="previewGrid"></div>
@@ -376,6 +378,12 @@
       <div class="chip-row" id="catChips">
         <button class="chip active" onclick="Gallery.setCat('all',this)">Alle</button>
         {% for c in categories %}<button class="chip" onclick="Gallery.setCat('{{ c }}',this)">{{ c }}</button>{% endfor %}
+      </div>
+      <div class="chip-row" id="sortChips" style="margin-bottom:.25rem">
+        <span style="font-size:.68rem;color:var(--mu);align-self:center;white-space:nowrap">Sortieren:</span>
+        <button class="chip active" onclick="Gallery.setSort('date',this)">📅 Datum</button>
+        <button class="chip" onclick="Gallery.setSort('person',this)">👤 Person</button>
+        <button class="chip" onclick="Gallery.setSort('category',this)">🏷️ Kategorie</button>
       </div>
       <div class="gallery-stats" id="galleryStats"></div>
     </div>
@@ -453,7 +461,7 @@
 <script>
 const CFG = {
   maxMb: {{ max_mb }},
-  WIZARD: {{ 'true' if wizard_enabled else 'false' }},  // ← gesteuert über WIZARD_ENABLED in app.py
+  WIZARD: true,   // ← Tag-Wizard an/ausschalten (true = an, false = direkt hochladen)
 };
 
 // ── ERROR CODES ─────────────────────────────────
@@ -537,8 +545,8 @@ Theme.init();
   if (isMobile) {
     const t = document.getElementById('dropzoneTitle');
     if (t) t.textContent = 'Tippen um Dateien auszuwählen';
-    // capture-Attribut bewusst NICHT gesetzt – sonst kann iPhone nur die
-    // Kamera öffnen und keine Fotos aus der Bibliothek auswählen.
+    const fi = document.getElementById('fileInput');
+    if (fi) fi.setAttribute('capture', 'environment');
   }
 })();
 
@@ -567,26 +575,27 @@ const Auth = {
     document.getElementById('roleAdmin').classList.toggle('active', r === 'admin');
   },
   async loginClass() {
-    const pw  = document.getElementById('loginPw').value;
-    const rem = document.getElementById('rememberMe').checked;
-    const d   = await api.post('/login', {password: pw, role: 'class', remember: rem});
+    const pw = document.getElementById('loginPw').value;
+    const d = await api.post('/login', {password: pw, role: 'class'});
     if (d.status === 'ok') {
+      if (document.getElementById('rememberMe').checked) localStorage.setItem('av26_rem', '1');
       App.init();
     } else {
       UI.setText('loginErr', errMsg('ERR_401', '❌ Falsches Passwort.'));
     }
   },
   async loginAdmin() {
-    const pw  = document.getElementById('adminPw').value;
-    const rem = document.getElementById('rememberMe').checked;
-    const d   = await api.post('/login', {password: pw, role: 'admin', remember: rem});
+    const pw = document.getElementById('adminPw').value;
+    const d = await api.post('/login', {password: pw, role: 'admin'});
     if (d.status === 'ok') {
+      if (document.getElementById('rememberMe').checked) localStorage.setItem('av26_rem', '1');
       App.init();
     } else {
       UI.setText('adminErr', '❌ Falsches Admin-Passwort.');
     }
   },
   async logout() {
+    localStorage.removeItem('av26_rem');
     await api.post('/logout', {});
     location.reload();
   }
@@ -639,10 +648,12 @@ const App = {
   }
 };
 
-// Auto-restore session (Cookie wird vom Browser automatisch mitgeschickt)
+// Auto-restore session
 (async () => {
+  if (!localStorage.getItem('av26_rem')) return;
   const d = await api.get('/api/session');
   if (d.class_auth) App.init();
+  else localStorage.removeItem('av26_rem');
 })();
 
 // ── ADMIN ───────────────────────────────────────
@@ -658,8 +669,25 @@ const Admin = {
   },
 
   downloadZip(name) {
-    toast('⏳ ZIP wird erstellt…');
-    window.location.href = '/api/download-zip' + (name ? `?name=${encodeURIComponent(name)}` : '');
+    // Show persistent spinner overlay during ZIP creation
+    const overlay = document.getElementById('zipOverlay');
+    if (overlay) overlay.classList.remove('hidden');
+    toast('⏳ ZIP wird erstellt – bitte warten…', 20000);
+
+    const url = '/api/download-zip' + (name ? `?name=${encodeURIComponent(name)}` : '');
+    // Use hidden iframe so we can detect completion
+    let iframe = document.getElementById('zipFrame');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'zipFrame';
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+    }
+    iframe.onload = () => {
+      if (overlay) overlay.classList.add('hidden');
+      toast('✅ ZIP bereit – Download startet');
+    };
+    iframe.src = url;
   },
 
   askDelete(publicId, resourceType, uploader) {
@@ -696,13 +724,21 @@ const Upload = {
   },
 
   addFiles(fileList) {
-    const warns = [];
+    const tooBig = [], dupes = [];
     Array.from(fileList).forEach(f => {
-      if (f.size / (1024 * 1024) > CFG.maxMb) warns.push(f.name);
-      else this.files.push(f);
+      if (f.size / (1024 * 1024) > CFG.maxMb) {
+        tooBig.push(f.name);
+        return;
+      }
+      // Duplicate check: same name + size already in queue
+      const isDupe = this.files.some(ex => ex.name === f.name && ex.size === f.size);
+      if (isDupe) { dupes.push(f.name); return; }
+      this.files.push(f);
     });
-    document.getElementById('sizeWarning').innerHTML = warns.length
-      ? `<div class="alert alert-warn">⚠️ Zu groß (übersprungen): ${warns.join(', ')}</div>` : '';
+    const warns = [];
+    if (tooBig.length) warns.push(`<div class="alert alert-warn">⚠️ Zu groß: ${tooBig.join(', ')}</div>`);
+    if (dupes.length)  warns.push(`<div class="alert alert-warn">⚠️ Bereits ausgewählt (übersprungen): ${dupes.join(', ')}</div>`);
+    document.getElementById('sizeWarning').innerHTML = warns.join('');
     this._buildPreview();
     this.checkForm();
   },
@@ -780,29 +816,51 @@ const Queue = {
   async _uploadItem(item) {
     const name = App.adminName || document.getElementById('nameSelect').value;
     const cat  = document.getElementById('categorySelect').value;
-    const fd   = new FormData();
-    fd.append('name', name);
-    fd.append('category', cat);
-    fd.append('comment', item.note);
-    fd.append('files', item.file);
-    if (item.tags.length) fd.append('tags', item.tags.join(','));
 
-    try {
-      const res  = await fetch('/upload', {method: 'POST', body: fd});
-      if (!res.ok) {
-        const code = res.status === 401 ? 'ERR_401' : res.status === 403 ? 'ERR_403' : 'ERR_500';
-        throw new Error(code);
+    const MAX_RETRIES = 2;
+    let lastErr = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        item.status = 'retrying';
+        item.retryCount = attempt;
+        this._updatePanel();
+        await new Promise(r => setTimeout(r, 1200 * attempt)); // backoff: 1.2s, 2.4s
       }
-      const data = await res.json();
-      if (data.status === 'ok') {
-        item.status = 'done';
-        this._done++;
-      } else {
-        throw new Error(data.code || 'ERR_500');
+      try {
+        const fd = new FormData();
+        fd.append('name', name);
+        fd.append('category', cat);
+        fd.append('comment', item.note);
+        fd.append('files', item.file);
+        if (item.tags.length) fd.append('tags', item.tags.join(','));
+
+        const res  = await fetch('/upload', {method: 'POST', body: fd});
+        if (!res.ok) {
+          const code = res.status === 401 ? 'ERR_401' : res.status === 403 ? 'ERR_403' : 'ERR_500';
+          // Don't retry auth errors
+          if (res.status === 401 || res.status === 403) { lastErr = new Error(code); break; }
+          throw new Error(code);
+        }
+        const data = await res.json();
+        if (data.status === 'ok') {
+          item.status = 'done';
+          item.retryCount = attempt;
+          this._done++;
+          lastErr = null;
+          break; // success
+        } else {
+          throw new Error(data.code || 'ERR_500');
+        }
+      } catch (e) {
+        lastErr = e;
       }
-    } catch (e) {
+    }
+
+    if (lastErr) {
       item.status = 'error';
-      this._errors.push(`${item.file.name} <span class="err-code">${e.message}</span>`);
+      const retryNote = item.retryCount > 0 ? ` (${item.retryCount}x wiederholt)` : '';
+      this._errors.push(`${item.file.name}${retryNote} <span class="err-code">${lastErr.message}</span>`);
     }
 
     this._running--;
@@ -837,7 +895,8 @@ const Queue = {
 
     // Queue list
     UI.set('queueList', this.items.map(it => {
-      const statusLabel = {waiting: '⏳ Wartend', uploading: '⬆️ Wird hochgeladen…', done: '✅ Fertig', error: '❌ Fehler'}[it.status];
+      const retryTxt = it.retryCount > 0 ? ` (Versuch ${it.retryCount + 1})` : '';
+      const statusLabel = {waiting: '⏳ Wartend', uploading: `⬆️ Wird hochgeladen…${retryTxt}`, retrying: `🔄 Wiederholen…${retryTxt}`, done: '✅ Fertig', error: '❌ Fehler'}[it.status] || '⏳';
       const thumb = it.file.type.startsWith('image')
         ? `<img src="${URL.createObjectURL(it.file)}">`
         : it.file.type.startsWith('video') ? '🎬'
@@ -972,12 +1031,44 @@ const Wizard = {
   }
 };
 
+
+// ── LAZY LOADING ─────────────────────────────────
+const LazyLoader = {
+  _obs: null,
+  init() {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('img.lazy[data-src]').forEach(img => {
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+        img.classList.remove('lazy');
+      });
+      return;
+    }
+    if (this._obs) this._obs.disconnect();
+    this._obs = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+          img.removeAttribute('data-src');
+          img.classList.remove('lazy');
+          img.style.background = '';
+        }
+        this._obs.unobserve(img);
+      });
+    }, { rootMargin: '200px 0px' });
+    document.querySelectorAll('img.lazy[data-src]').forEach(img => this._obs.observe(img));
+  }
+};
+
 // ── GALLERY ─────────────────────────────────────
 const Gallery = {
   files: [],
   visible: [],
   cat: 'all',
   person: 'all',
+  sortBy: 'date', // 'date' | 'person' | 'category'
 
   async load() {
     UI.set('galleryGrid', '<div class="spinner">⏳ Wird geladen…</div>');
@@ -1005,11 +1096,19 @@ const Gallery = {
   },
 
   render() {
-    this.visible = this.files.filter(f =>
-      (this.cat === 'all' || f.category === this.cat) &&
-      (this.person === 'all' || f.uploader === this.person)
-    );
+    this.visible = this.files
+      .filter(f =>
+        (this.cat === 'all' || f.category === this.cat) &&
+        (this.person === 'all' || f.uploader === this.person)
+      )
+      .sort((a, b) => {
+        if (this.sortBy === 'person')   return a.uploader.localeCompare(b.uploader);
+        if (this.sortBy === 'category') return (a.category||'').localeCompare(b.category||'');
+        return 0; // 'date' – already sorted by server
+      });
     UI.setText('galleryStats', `${this.visible.length} Dateien`);
+    // Trigger lazy loader after DOM update
+    requestAnimationFrame(() => LazyLoader.init());
     const el = document.getElementById('galleryGrid');
     if (!this.visible.length) {
       el.className = 'spinner'; el.innerHTML = '📭 Noch keine Dateien.'; return;
@@ -1020,11 +1119,13 @@ const Gallery = {
       const delay = `animation-delay:${Math.min(i * 0.02, 0.4)}s`;
       const tags = (f.tags && f.tags.length)
         ? `<div class="tag-chips">${f.tags.map(t => `<span class="tag-chip">#${t}</span>`).join('')}</div>` : '';
+      const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
       const media = f.type === 'video'
-        ? `<video src="${f.url}" muted preload="metadata"></video><span class="badge-vid">VIDEO</span>`
+        ? `<img data-src="${CL.videoThumb(f.url)}" src="${BLANK}" class="lazy" style="width:100%;display:block;min-height:80px;background:var(--brd)"><span class="badge-vid">VIDEO</span>`
         : f.type === 'raw'
           ? `<div class="audio-tile">🎵<span>${f.uploader}</span></div>`
-          : `<img src="${f.url}" loading="lazy">`;
+          : `<img data-src="${CL.thumb(f.url)}" src="${BLANK}" class="lazy" style="min-height:60px;background:var(--brd)">`;
+
       const delBtn = App.adminRole
         ? `<button class="btn-del" onclick="event.stopPropagation();Admin.askDelete('${f.public_id}','${f.resource_type || f.type}','${f.uploader}')">🗑</button>` : '';
       return `<div class="masonry-item" onclick="Lightbox.open(${i})" style="${delay}">
@@ -1050,6 +1151,12 @@ const Gallery = {
     b.classList.add('active'); this.render();
   },
 
+  setSort(v, b) {
+    this.sortBy = v;
+    document.querySelectorAll('#sortChips .chip').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); this.render();
+  },
+
   _updateAdminStats() {
     const persons = new Set(this.files.map(f => f.uploader)).size;
     UI.set('adminStats', `
@@ -1064,18 +1171,49 @@ const Gallery = {
 // ── LIGHTBOX ────────────────────────────────────
 const Lightbox = {
   idx: 0,
-  open(i) { this.idx = i; this._render(); document.getElementById('lightbox').classList.add('open'); },
+  open(i) {
+    this.idx = i;
+    this._render();
+    document.getElementById('lightbox').classList.add('open');
+    // Prefetch neighbours
+    [i + 1, i - 1].forEach(j => {
+      if (j >= 0 && j < Gallery.visible.length) {
+        const f = Gallery.visible[j];
+        if (f.type === 'image') { const img = new Image(); img.src = f.url; }
+      }
+    });
+  },
   close()  { document.getElementById('lightbox').classList.remove('open'); },
-  nav(d)   { const n = this.idx + d; if (n >= 0 && n < Gallery.visible.length) { this.idx = n; this._render(); } },
+  nav(d) {
+    const n = this.idx + d;
+    if (n >= 0 && n < Gallery.visible.length) { this.idx = n; this._render(); }
+    // Prefetch next and previous
+    [n + 1, n - 1].forEach(i => {
+      if (i >= 0 && i < Gallery.visible.length) {
+        const f = Gallery.visible[i];
+        if (f.type === 'image') { const img = new Image(); img.src = f.url; }
+      }
+    });
+  },
   _render() {
     const f = Gallery.visible[this.idx];
     const inner = document.getElementById('lbInner');
     if (f.type === 'video') {
+      // Full resolution video
       inner.innerHTML = `<video src="${f.url}" controls autoplay playsinline></video>`;
     } else if (f.type === 'raw') {
       inner.innerHTML = `<audio src="${f.url}" controls autoplay style="width:min(300px,88vw);margin:3rem auto;display:block"></audio>`;
     } else {
-      inner.innerHTML = `<img src="${f.url}">`;
+      // Show low-res placeholder instantly, then swap to full original
+      const thumb = CL.thumb(f.url, 80);
+      const full  = f.url; // original, no transformation
+      inner.innerHTML = `<img src="${thumb}" style="max-width:92vw;max-height:78vh;border-radius:8px;object-fit:contain;filter:blur(8px);transition:filter .3s" id="lbImg">`;
+      const img = new Image();
+      img.onload = () => {
+        const el = document.getElementById('lbImg');
+        if (el) { el.src = full; el.style.filter = 'none'; }
+      };
+      img.src = full;
     }
     UI.set('lbMeta', `<strong>${f.uploader}</strong> · ${f.category || ''}${f.tags && f.tags.length ? ' · ' + f.tags.map(t => '#' + t).join(' ') : ''}`);
     UI.setText('lbCounter', `${this.idx + 1} / ${Gallery.visible.length}`);
@@ -1135,6 +1273,27 @@ const Report = {
     } catch { toast(errMsg('ERR_NET')); }
   }
 };
+
+// ── SERVICE WORKER ───────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(r => console.log('SW scope:', r.scope))
+      .catch(e => console.warn('SW failed:', e));
+  });
+}
 </script>
+
+<!-- ZIP SPINNER OVERLAY -->
+<div id="zipOverlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+  <div style="background:var(--sur);border:1px solid var(--brd);border-radius:16px;padding:2rem 2.5rem;text-align:center;max-width:280px">
+    <div style="font-size:2.5rem;margin-bottom:.75rem">📦</div>
+    <div class="syne" style="font-size:1rem;font-weight:800;margin-bottom:.35rem">ZIP wird erstellt…</div>
+    <div style="font-size:.78rem;color:var(--mu);margin-bottom:1rem">Alle Dateien werden gepackt.<br>Bitte nicht schließen.</div>
+    <div style="height:5px;background:var(--brd);border-radius:99px;overflow:hidden">
+      <div style="height:100%;background:var(--acc);border-radius:99px;animation:zipProg 2s ease-in-out infinite"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
